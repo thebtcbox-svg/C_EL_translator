@@ -12,7 +12,6 @@ class CEL_AI_Updater {
 	private $file;
 	private $plugin;
 	private $basename;
-	private $active;
 	private $username = 'thebtcbox-svg';
 	private $repo     = 'C_EL_translator';
 	private $github_response;
@@ -29,14 +28,20 @@ class CEL_AI_Updater {
 
 	private function get_repository_info() {
 		if ( is_null( $this->github_response ) ) {
-			$url = "https://api.github.com/repos/{$this->username}/{$this->repo}/releases/latest";
+			// Fetch tags instead of releases for better automation
+			$url = "https://api.github.com/repos/{$this->username}/{$this->repo}/tags";
 			$response = wp_remote_get( $url, [ 'headers' => [ 'User-Agent' => 'WordPress/' . get_bloginfo('version') ] ] );
 
 			if ( is_wp_error( $response ) ) {
 				return false;
 			}
 
-			$this->github_response = json_decode( wp_remote_retrieve_body( $response ) );
+			$tags = json_decode( wp_remote_retrieve_body( $response ) );
+			if ( ! is_array($tags) || empty($tags) ) {
+				return false;
+			}
+
+			$this->github_response = $tags[0]; // Take the latest tag
 		}
 		return $this->github_response;
 	}
@@ -51,7 +56,7 @@ class CEL_AI_Updater {
 			return $transient;
 		}
 
-		$remote_version = ltrim( $github_info->tag_name, 'v' );
+		$remote_version = ltrim( $github_info->name, 'v' );
 
 		if ( version_compare( $this->plugin['Version'], $remote_version, '<' ) ) {
 			$obj              = new stdClass();
@@ -83,13 +88,13 @@ class CEL_AI_Updater {
 		$res = new stdClass();
 		$res->name         = $this->plugin['Name'];
 		$res->slug         = $this->basename;
-		$res->version      = ltrim( $github_info->tag_name, 'v' );
+		$res->version      = ltrim( $github_info->name, 'v' );
 		$res->author       = $this->plugin['AuthorName'];
 		$res->homepage     = $this->plugin['PluginURI'];
 		$res->download_link = $github_info->zipball_url;
 		$res->sections     = [
 			'description' => $this->plugin['Description'],
-			'changelog'   => $github_info->body,
+			'changelog'   => 'Check the repository for recent changes.',
 		];
 
 		return $res;

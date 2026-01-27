@@ -513,19 +513,17 @@ class CEL_AI_Admin_UI {
 	public function ajax_check_updates() {
 		check_ajax_referer( 'cel_ai_update_nonce', 'nonce' );
 		$repo = 'thebtcbox-svg/C_EL_translator';
-		$url = "https://api.github.com/repos/{$repo}/releases/latest";
+		$url = "https://api.github.com/repos/{$repo}/tags";
 		$response = wp_remote_get( $url, [ 'headers' => [ 'User-Agent' => 'WordPress/' . get_bloginfo('version') ] ] );
 		if ( is_wp_error( $response ) ) {
 			wp_send_json_error( [ 'message' => 'Could not connect to GitHub API.' ] );
 		}
 		$body = json_decode( wp_remote_retrieve_body( $response ), true );
-		if ( ! is_array($body) ) {
-			wp_send_json_error( [ 'message' => 'Invalid response from GitHub.' ] );
+		if ( ! is_array($body) || empty($body) ) {
+			wp_send_json_error( [ 'message' => 'No tags found in this repository.' ] );
 		}
-		$latest_version = isset( $body['tag_name'] ) ? ltrim( $body['tag_name'], 'v' ) : '';
-		if ( empty( $latest_version ) ) {
-			wp_send_json_error( [ 'message' => 'No releases found in this repository.' ] );
-		}
+		$latest_version = isset( $body[0]['name'] ) ? ltrim( $body[0]['name'], 'v' ) : '';
+		
 		if ( version_compare( CEL_AI_VERSION, $latest_version, '<' ) ) {
 			$basename = plugin_basename( CEL_AI_PATH . 'cel-ai.php' );
 			$update_url = wp_nonce_url( self_admin_url( 'update.php?action=upgrade-plugin&plugin=' . urlencode( $basename ) ), 'upgrade-plugin_' . $basename );
