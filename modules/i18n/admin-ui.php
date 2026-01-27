@@ -21,57 +21,6 @@ class CEL_AI_Admin_UI {
 		add_action( 'wp_ajax_cel_ai_process_queue_manual', [ $this, 'ajax_process_queue_manual' ] );
 		add_action( 'wp_ajax_cel_ai_check_updates', [ $this, 'ajax_check_updates' ] );
 	}
->>>>>>>------- SEARCH
-	public function ajax_cancel_job() {
-		check_ajax_referer( 'cel_ai_job_status_nonce', 'nonce' );
-		if ( ! current_user_can( 'edit_posts' ) ) {
-			wp_send_json_error( [ 'message' => __( 'Unauthorized', 'cel-ai' ) ] );
-		}
-		$job_id = isset( $_POST['job_id'] ) ? sanitize_text_field( $_POST['job_id'] ) : '';
-		$queue = get_option( CEL_AI_Job_Queue::OPTION_NAME, [] );
-		if ( isset( $queue[ $job_id ] ) ) {
-			$queue[ $job_id ]['status'] = 'failed';
-			$queue[ $job_id ]['log'][] = 'Cancelled by user.';
-			update_option( CEL_AI_Job_Queue::OPTION_NAME, $queue, false );
-			wp_send_json_success();
-		} else {
-			wp_send_json_error( [ 'message' => 'Job not found' ] );
-		}
-	}
-
-	public function ajax_check_updates() {
-	public function ajax_cancel_job() {
-		check_ajax_referer( 'cel_ai_job_status_nonce', 'nonce' );
-		if ( ! current_user_can( 'edit_posts' ) ) {
-			wp_send_json_error( [ 'message' => __( 'Unauthorized', 'cel-ai' ) ] );
-		}
-		$job_id = isset( $_POST['job_id'] ) ? sanitize_text_field( $_POST['job_id'] ) : '';
-		$queue = get_option( CEL_AI_Job_Queue::OPTION_NAME, [] );
-		if ( isset( $queue[ $job_id ] ) ) {
-			$queue[ $job_id ]['status'] = 'failed';
-			$queue[ $job_id ]['log'][] = 'Cancelled by user.';
-			update_option( CEL_AI_Job_Queue::OPTION_NAME, $queue, false );
-			wp_send_json_success();
-		} else {
-			wp_send_json_error( [ 'message' => 'Job not found' ] );
-		}
-	}
-
-	public function ajax_process_queue_manual() {
-		check_ajax_referer( 'cel_ai_job_status_nonce', 'nonce' );
-		if ( ! current_user_can( 'edit_posts' ) ) {
-			wp_send_json_error( [ 'message' => __( 'Unauthorized', 'cel-ai' ) ] );
-		}
-		
-		$queue_manager = new CEL_AI_Job_Queue();
-		$queue_manager->process_queue();
-		
-		wp_send_json_success();
-	}
-
-	public function ajax_check_updates() {
->>>>>>>+++++++ REPLACE
-
 
 	public function enqueue_assets( $hook ) {
 		// Only enqueue on relevant pages
@@ -365,33 +314,6 @@ class CEL_AI_Admin_UI {
 					<button type="button" id="cel-ai-process-now" class="button button-primary"><?php _e( 'Process Next Step Now', 'cel-ai' ); ?></button>
 				</div>
 				<div id="cel-ai-global-queue">
->>>>>>>------- SEARCH
-					if ( response.success ) {
-						window.location.reload(); // Reload to show the new job in the monitor
-					} else {
-					if ( response.success ) {
-						window.location.reload(); // Reload to show the new job in the monitor
-					} else {
->>>>>>>------- SEARCH
-		script>
-		jQuery(document).ready(function($) {
-			function pollJobStatus(jobId, progressBarId, statusId, resultId) {
-		script>
-		jQuery(document).ready(function($) {
-			$('#cel-ai-process-now').on('click', function() {
-				var btn = $(this);
-				btn.prop('disabled', true).text('Processing...');
-				$.post(ajaxurl, {
-					action: 'cel_ai_process_queue_manual',
-					nonce: '<?php echo wp_create_nonce( 'cel_ai_job_status_nonce' ); ?>'
-				}, function() {
-					window.location.reload();
-				});
-			});
-
-			function pollJobStatus(jobId, progressBarId, statusId, resultId) {
->>>>>>>+++++++ REPLACE
-
 					<?php if ( empty( $active_jobs ) ) : ?>
 						<p><?php _e( 'No active jobs in the queue.', 'cel-ai' ); ?></p>
 					<?php else : ?>
@@ -590,6 +512,18 @@ class CEL_AI_Admin_UI {
 		} else {
 			wp_send_json_error( [ 'message' => 'Job not found' ] );
 		}
+	}
+
+	public function ajax_process_queue_manual() {
+		check_ajax_referer( 'cel_ai_job_status_nonce', 'nonce' );
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			wp_send_json_error( [ 'message' => __( 'Unauthorized', 'cel-ai' ) ] );
+		}
+		
+		$queue_manager = new CEL_AI_Job_Queue();
+		$queue_manager->process_queue();
+		
+		wp_send_json_success();
 	}
 
 	public function ajax_check_updates() {

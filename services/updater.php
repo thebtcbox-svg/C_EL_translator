@@ -19,6 +19,11 @@ class CEL_AI_Updater {
 	public function __construct( $file ) {
 		$this->file     = $file;
 		$this->basename = plugin_basename( $this->file );
+		
+		if ( ! function_exists( 'get_plugin_data' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+		
 		$this->plugin   = get_plugin_data( $this->file );
 		
 		add_filter( 'site_transient_update_plugins', [ $this, 'check_update' ] );
