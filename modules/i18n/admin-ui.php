@@ -52,7 +52,8 @@ class CEL_AI_Admin_UI {
 	public function register_settings() {
 		register_setting( 'cel_ai_settings_group', 'cel_ai_openrouter_key' );
 		register_setting( 'cel_ai_settings_group', 'cel_ai_model_id' );
-		register_setting( 'cel_ai_settings_group', 'cel_ai_auto_switcher' );
+		register_setting( 'cel_ai_settings_group', 'cel_ai_switcher_location' );
+		register_setting( 'cel_ai_settings_group', 'cel_ai_publish_status' );
 
 		add_settings_section(
 			'cel_ai_main_section',
@@ -78,9 +79,17 @@ class CEL_AI_Admin_UI {
 		);
 
 		add_settings_field(
-			'cel_ai_auto_switcher',
-			__( 'Auto-inject Switcher', 'cel-ai' ),
-			[ $this, 'render_auto_switcher_field' ],
+			'cel_ai_switcher_location',
+			__( 'Language Switcher Location', 'cel-ai' ),
+			[ $this, 'render_switcher_location_field' ],
+			'cel-ai-settings',
+			'cel_ai_main_section'
+		);
+
+		add_settings_field(
+			'cel_ai_publish_status',
+			__( 'Default Translation Status', 'cel-ai' ),
+			[ $this, 'render_publish_status_field' ],
 			'cel-ai-settings',
 			'cel_ai_main_section'
 		);
@@ -114,10 +123,32 @@ class CEL_AI_Admin_UI {
 		echo '</select>';
 	}
 
-	public function render_auto_switcher_field() {
-		$val = get_option( 'cel_ai_auto_switcher', '0' );
-		echo '<input type="checkbox" name="cel_ai_auto_switcher" value="1" ' . checked( $val, '1', false ) . ' />';
-		echo '<p class="description">' . __( 'Automatically add the language switcher to the bottom of pages/products.', 'cel-ai' ) . '</p>';
+	public function render_switcher_location_field() {
+		$val = get_option( 'cel_ai_switcher_location', 'none' );
+		$options = [
+			'none'   => __( 'None (Manual only)', 'cel-ai' ),
+			'top'    => __( 'Top of Content', 'cel-ai' ),
+			'bottom' => __( 'Bottom of Content', 'cel-ai' ),
+			'both'   => __( 'Both Top and Bottom', 'cel-ai' ),
+		];
+		echo '<select name="cel_ai_switcher_location">';
+		foreach ( $options as $k => $v ) {
+			echo '<option value="' . esc_attr( $k ) . '" ' . selected( $val, $k, false ) . '>' . esc_html( $v ) . '</option>';
+		}
+		echo '</select>';
+	}
+
+	public function render_publish_status_field() {
+		$val = get_option( 'cel_ai_publish_status', 'draft' );
+		$options = [
+			'draft'   => __( 'Save as Draft', 'cel-ai' ),
+			'publish' => __( 'Publish Immediately', 'cel-ai' ),
+		];
+		echo '<select name="cel_ai_publish_status">';
+		foreach ( $options as $k => $v ) {
+			echo '<option value="' . esc_attr( $k ) . '" ' . selected( $val, $k, false ) . '>' . esc_html( $v ) . '</option>';
+		}
+		echo '</select>';
 	}
 
 	public function render_settings_page() {

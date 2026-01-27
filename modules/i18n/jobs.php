@@ -160,11 +160,13 @@ class CEL_AI_Translation_Processor {
 		$translations = CEL_AI_I18N_Controller::get_translations( $post_id );
 		$group_id     = CEL_AI_I18N_Controller::ensure_group_id( $post_id );
 
+		$publish_status = get_option( 'cel_ai_publish_status', 'draft' );
+
 		$post_data = [
 			'post_title'   => $title_res['translated_text'],
 			'post_content' => $content_res['translated_text'],
 			'post_excerpt' => $excerpt_res['translated_text'],
-			'post_status'  => 'draft',
+			'post_status'  => $publish_status,
 			'post_type'    => $post->post_type,
 		];
 
@@ -185,7 +187,7 @@ class CEL_AI_Translation_Processor {
 		update_post_meta( $translated_post_id, CEL_AI_I18N_Controller::META_SOURCE_LANG, $source_lang );
 		update_post_meta( $translated_post_id, CEL_AI_I18N_Controller::META_ORIGINAL_ID, $post_id );
 		update_post_meta( $translated_post_id, CEL_AI_I18N_Controller::META_IS_ORIGINAL, '0' );
-		update_post_meta( $translated_post_id, CEL_AI_I18N_Controller::META_STATUS, 'draft' );
+		update_post_meta( $translated_post_id, CEL_AI_I18N_Controller::META_STATUS, $publish_status );
 
 		// Copy essential metadata (Images, Prices, etc.)
 		$this->copy_essential_meta( $post_id, $translated_post_id );

@@ -16,20 +16,31 @@ class CEL_AI_Frontend_Filters {
 	}
 
 	/**
-	 * Inject language switcher to the bottom of the content if option is enabled
+	 * Inject language switcher based on settings
 	 */
 	public function maybe_inject_switcher( $content ) {
 		if ( ! is_main_query() || ! is_singular() ) {
 			return $content;
 		}
 
-		$auto_inject = get_option( 'cel_ai_auto_switcher', '0' );
-		if ( '1' !== $auto_inject ) {
+		$location = get_option( 'cel_ai_switcher_location', 'none' );
+		if ( 'none' === $location ) {
 			return $content;
 		}
 
-		$switcher = new CEL_AI_Switcher();
-		return $content . $switcher->render_switcher();
+		$switcher_obj = new CEL_AI_Switcher();
+		$switcher_html = $switcher_obj->render_switcher();
+
+		switch ( $location ) {
+			case 'top':
+				return $switcher_html . $content;
+			case 'bottom':
+				return $content . $switcher_html;
+			case 'both':
+				return $switcher_html . $content . $switcher_html;
+			default:
+				return $content;
+		}
 	}
 
 	/**
