@@ -39,8 +39,13 @@ class CEL_AI_API {
 	 */
 	public function handle_translate_request( $request ) {
 		$params = $request->get_json_params();
+		if ( ! is_array( $params ) ) {
+			return new WP_Error( 'invalid_json', 'Invalid JSON payload', [ 'status' => 400 ] );
+		}
+
 		$post_id     = isset( $params['post_id'] ) ? intval( $params['post_id'] ) : 0;
 		$target_lang = isset( $params['target_language'] ) ? sanitize_text_field( $params['target_language'] ) : '';
+		$mode        = isset( $params['mode'] ) ? sanitize_text_field( $params['mode'] ) : 'full';
 
 		if ( ! $post_id || ! $target_lang ) {
 			return new WP_Error( 'missing_params', 'Missing post_id or target_language', [ 'status' => 400 ] );
@@ -50,6 +55,7 @@ class CEL_AI_API {
 		$job_id = $queue->enqueue( [
 			'post_id'         => $post_id,
 			'target_language' => $target_lang,
+			'mode'            => $mode,
 		] );
 
 		return rest_ensure_response( [
@@ -70,8 +76,9 @@ class CEL_AI_API {
 		}
 
 		return rest_ensure_response( [
-			'status' => $job['status'],
-			'log'    => $job['log'],
+			'status'   => $job['status'],
+			'log'      => $job['log'],
+			'progress' => isset($job['progress']) ? $job['progress'] : null,
 		] );
 	}
 }

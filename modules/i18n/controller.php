@@ -61,6 +61,12 @@ class CEL_AI_I18N_Controller {
 	public static function ensure_group_id( $post_id ) {
 		$group_id = get_post_meta( $post_id, self::META_GROUP_ID, true );
 		if ( ! $group_id ) {
+			// Only update if it's the original post (no source lang meta yet)
+			$is_trans = get_post_meta( $post_id, self::META_ORIGINAL_ID, true );
+			if ( $is_trans ) {
+				return $group_id; // Should not happen if data model is followed
+			}
+
 			$group_id = wp_generate_uuid4();
 			update_post_meta( $post_id, self::META_GROUP_ID, $group_id );
 			update_post_meta( $post_id, self::META_IS_ORIGINAL, '1' );

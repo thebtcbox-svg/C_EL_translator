@@ -12,12 +12,31 @@ class CEL_AI_Admin_UI {
 	public function __construct() {
 		add_action( 'admin_menu', [ $this, 'add_settings_menu' ] );
 		add_action( 'admin_init', [ $this, 'register_settings' ] );
+		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
 		add_action( 'wp_ajax_cel_ai_test_connection', [ $this, 'ajax_test_connection' ] );
 		add_action( 'add_meta_boxes', [ $this, 'add_translation_meta_box' ] );
 		add_action( 'wp_ajax_cel_ai_trigger_translation', [ $this, 'ajax_trigger_translation' ] );
 		add_action( 'wp_ajax_cel_ai_get_job_status', [ $this, 'ajax_get_job_status' ] );
 		add_action( 'wp_ajax_cel_ai_cancel_job', [ $this, 'ajax_cancel_job' ] );
 		add_action( 'wp_ajax_cel_ai_check_updates', [ $this, 'ajax_check_updates' ] );
+	}
+
+	public function enqueue_assets( $hook ) {
+		// Only enqueue on relevant pages
+		$allowed_hooks = [ 'settings_page_cel-ai-settings', 'post.php', 'post-new.php' ];
+		if ( ! in_array( $hook, $allowed_hooks ) ) {
+			return;
+		}
+
+		wp_enqueue_style( 'cel-ai-admin-style', CEL_AI_URL . 'assets/admin.css', [], CEL_AI_VERSION );
+		wp_enqueue_script( 'cel-ai-admin-script', CEL_AI_URL . 'assets/admin.js', [ 'jquery' ], CEL_AI_VERSION, true );
+
+		wp_localize_script( 'cel-ai-admin-script', 'celAiAdmin', [
+			'testNonce'       => wp_create_nonce( 'cel_ai_test_nonce' ),
+			'transNonce'      => wp_create_nonce( 'cel_ai_trans_nonce' ),
+			'jobStatusNonce'  => wp_create_nonce( 'cel_ai_job_status_nonce' ),
+			'updateNonce'     => wp_create_nonce( 'cel_ai_update_nonce' ),
+		] );
 	}
 
 	public function add_settings_menu() {
@@ -70,12 +89,12 @@ class CEL_AI_Admin_UI {
 	public function render_api_key_field() {
 		$key = get_option( 'cel_ai_openrouter_key' );
 		$constant_key = defined( 'CEL_AI_OPENROUTER_KEY' ) ? CEL_AI_OPENROUTER_KEY : false;
-		$readonly = $constant_key ? 'readonly' : '';
-		$value = $constant_key ? $constant_key : $key;
-
-		echo '<input type="password" name="cel_ai_openrouter_key" value="' . esc_attr( $value ) . '" class="regular-text" ' . $readonly . ' />';
+		
 		if ( $constant_key ) {
+			echo '<input type="password" value="********" class="regular-text" readonly disabled />';
 			echo '<p class="description">' . __( 'Key loaded from wp-config.php (read-only)', 'cel-ai' ) . '</p>';
+		} else {
+			echo '<input type="password" name="cel_ai_openrouter_key" value="' . esc_attr( $key ) . '" class="regular-text" />';
 		}
 	}
 
@@ -159,8 +178,8 @@ class CEL_AI_Admin_UI {
 									<td><?php echo esc_html( strtoupper( $job['target_language'] ) ); ?></td>
 									<td>
 										<div class="cel-ai-progress-container" id="progress-global-<?php echo $job['id']; ?>">
-											<div style="width: 100%; background: #eee; height: 10px; border-radius: 5px; overflow: hidden;">
-												<div class="cel-ai-bar" style="width: <?php echo $pct; ?>%; background: #0073aa; height: 100%;"></div>
+											<div class="cel-ai-bar-wrapper">
+												<div class="cel-ai-bar" style="width: <?php echo $pct; ?>%;"></div>
 											</div>
 											<small class="cel-ai-status-text" data-job-id="<?php echo $job['id']; ?>"><?php echo ucfirst( $job['status'] ); ?> (<?php echo $pct; ?>%)</small>
 										</div>
@@ -220,144 +239,6 @@ class CEL_AI_Admin_UI {
 				<button type="button" class="button" onclick="window.location.reload();"><?php _e( 'Refresh Logs', 'cel-ai' ); ?></button>
 			<?php endif; ?>
 		</div>
-
-		<script>
-		jQuery(document).ready(function($) {
-			function pollJobStatus(jobId, progressBarId, statusId, resultId) {
-				var interval = setInterval(function() {
-					$.post(ajaxurl, {
-						action: 'cel_ai_get_job_status',
-						job_id: jobId,
-						nonce: '<?php echo wp_create_nonce( 'cel_ai_job_status_nonce' ); ?>'
-					}, function(response) {
-						if (response.success) {
-							var job = response.data;
-							var percent = job.progress ? job.progress.percent : 0;
-							if (progressBarId) $('#' + progressBarId).css('width', percent + '%');
-							if (statusId) $('#' + statusId).text(job.status.charAt(0).toUpperCase() + job.status.slice(1) + ' (' + percent + '%)');
-							
-							if (job.status === 'completed' || job.status === 'failed') {
-								clearInterval(interval);
-								if (job.status === 'completed') {
-									if (resultId) $('#' + resultId).html('<span style="color: green;">Translation Complete!</span>');
-									window.location.reload();
-								} else {
-									if (resultId) $('#' + resultId).html('<span style="color: red;">Job Failed. Check logs.</span>');
-								}
-							}
-						}
-					});
-				}, 3000);
-			}
-
-			// Auto-start polling for all active jobs visible on settings page
-			$('#cel-ai-global-queue tr').each(function() {
-				var row = $(this);
-				var jobId = row.find('.cel-ai-status-text').data('job-id');
-				if (jobId) {
-					pollJobStatus(jobId, 'progress-global-' + jobId + ' .cel-ai-bar', 'progress-global-' + jobId + ' .cel-ai-status-text');
-				}
-			});
-
-			$('#cel-ai-check-updates').on('click', function() {
-				var btn = $(this);
-				btn.prop('disabled', true).text('Checking...');
-				$.post(ajaxurl, {
-					action: 'cel_ai_check_updates',
-					nonce: '<?php echo wp_create_nonce( 'cel_ai_update_nonce' ); ?>'
-				}, function(response) {
-					btn.prop('disabled', false).text('Check for Updates from GitHub');
-					if (response.success) {
-						$('#cel-ai-update-result').html('<span style="color: green;">' + response.data.message + '</span>');
-					} else {
-						$('#cel-ai-update-result').html('<span style="color: red;">' + response.data.message + '</span>');
-					}
-				});
-			});
-
-			$('#cel-ai-test-connection').on('click', function() {
-				var btn = $(this);
-				btn.prop('disabled', true);
-				$('#cel-ai-test-result').html('Testing...');
-
-				$.post(ajaxurl, {
-					action: 'cel_ai_test_connection',
-					nonce: '<?php echo wp_create_nonce( 'cel_ai_test_nonce' ); ?>'
-				}, function(response) {
-					btn.prop('disabled', false);
-					if (response.success) {
-						$('#cel-ai-test-result').html('<span style="color: green;">' + response.data.message + '</span>');
-					} else {
-						$('#cel-ai-test-result').html('<span style="color: red;">' + response.data.message + '</span>');
-					}
-				});
-			});
-
-			$('#cel-ai-run-bulk').on('click', function() {
-				var btn = $(this);
-				btn.prop('disabled', true).text('Queuing...');
-
-				$.post(ajaxurl, {
-					action: 'cel_ai_trigger_translation',
-					post_id: $('#cel_ai_bulk_post_id').val(),
-					target_lang: $('#cel_ai_bulk_target_lang').val(),
-					nonce: '<?php echo wp_create_nonce( 'cel_ai_trans_nonce' ); ?>'
-				}, function(response) {
-					btn.prop('disabled', false).text('Start Translation');
-					if (response.success) {
-						window.location.reload(); // Reload to show the new job in the monitor
-					} else {
-						$('#cel-ai-bulk-result').html('<span style="color: red;">' + response.data.message + '</span>');
-					}
-				});
-			});
-
-			// Sidebar logic
-			$('.cel-ai-progress-container:visible').each(function() {
-				var container = $(this);
-				var jobId = container.find('.cel-ai-status-text').data('job-id');
-				if (jobId) {
-					pollJobStatus(jobId, container.attr('id') + ' .cel-ai-bar', container.attr('id') + ' .cel-ai-status-text');
-				}
-			});
-
-			$(document).on('click', '.cel-ai-cancel-btn', function() {
-				var btn = $(this);
-				var jobId = btn.data('job-id');
-				if (confirm('Cancel this job?')) {
-					$.post(ajaxurl, {
-						action: 'cel_ai_cancel_job',
-						job_id: jobId,
-						nonce: '<?php echo wp_create_nonce( 'cel_ai_job_status_nonce' ); ?>'
-					}, function() {
-						window.location.reload();
-					});
-				}
-			});
-
-			$('.cel-ai-translate-btn').on('click', function() {
-				var btn = $(this);
-				var lang = btn.data('lang');
-				var originalText = btn.text();
-				btn.prop('disabled', true).text('Queuing...');
-				$('#progress-' + lang).show();
-
-				$.post(ajaxurl, {
-					action: 'cel_ai_trigger_translation',
-					post_id: btn.data('post-id'),
-					target_lang: lang,
-					nonce: '<?php echo wp_create_nonce( 'cel_ai_trans_nonce' ); ?>'
-				}, function(response) {
-					if (response.success) {
-						pollJobStatus(response.data.job_id, 'progress-' + lang + ' .cel-ai-bar', 'progress-' + lang + ' .cel-ai-status-text');
-					} else {
-						alert(response.data.message);
-						btn.prop('disabled', false).text(originalText);
-					}
-				});
-			});
-		});
-		</script>
 		<?php
 	}
 
@@ -409,14 +290,14 @@ class CEL_AI_Admin_UI {
 			}
 
 			echo '<div class="cel-ai-progress-container" id="progress-' . $code . '" style="' . ( $active_job ? '' : 'display:none;' ) . ' margin-top:5px;">';
-			echo '<div style="width: 100%; background: #eee; height: 5px; border-radius: 3px; overflow: hidden;">';
+			echo '<div class="cel-ai-bar-wrapper">';
 			$pct = $active_job && isset( $active_job['progress'] ) ? $active_job['progress']['percent'] : 0;
-			echo '<div class="cel-ai-bar" style="width: ' . $pct . '%; background: #0073aa; height: 100%;"></div>';
+			echo '<div class="cel-ai-bar" style="width: ' . $pct . '%;"></div>';
 			echo '</div>';
 			echo '<div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">';
 			if ( $active_job ) {
 				echo '<small class="cel-ai-status-text" data-job-id="' . $active_job['id'] . '">Status: ' . esc_html( ucfirst( $active_job['status'] ) ) . ' (' . $pct . '%)</small>';
-				echo ' <button type="button" class="cel-ai-cancel-btn" data-job-id="' . $active_job['id'] . '" style="border:none; background:none; color:red; cursor:pointer; font-size:10px; padding:0;">[Cancel]</button>';
+				echo ' <button type="button" class="cel-ai-cancel-btn" data-job-id="' . $active_job['id'] . '">' . __( '[Cancel]', 'cel-ai' ) . '</button>';
 			} else {
 				echo '<small class="cel-ai-status-text"></small>';
 			}
@@ -482,6 +363,9 @@ class CEL_AI_Admin_UI {
 			wp_send_json_error( [ 'message' => 'Could not connect to GitHub API.' ] );
 		}
 		$body = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( ! is_array($body) ) {
+			wp_send_json_error( [ 'message' => 'Invalid response from GitHub.' ] );
+		}
 		$latest_version = isset( $body['tag_name'] ) ? ltrim( $body['tag_name'], 'v' ) : '';
 		if ( empty( $latest_version ) ) {
 			wp_send_json_error( [ 'message' => 'No releases found in this repository.' ] );
@@ -501,10 +385,10 @@ class CEL_AI_Admin_UI {
 		}
 		$client = new CEL_AI_AI_Client();
 		$result = $client->test_connection();
-		if ( $result['success'] ) {
+		if ( is_array($result) && $result['success'] ) {
 			wp_send_json_success( $result );
 		} else {
-			wp_send_json_error( $result );
+			wp_send_json_error( is_array($result) ? $result : [ 'message' => 'Unknown error' ] );
 		}
 	}
 }

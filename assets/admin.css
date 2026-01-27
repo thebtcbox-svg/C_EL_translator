@@ -1,0 +1,32 @@
+.cel-ai-progress-container {
+    margin-top: 5px;
+}
+.cel-ai-bar-wrapper {
+    width: 100%;
+    background: #eee;
+    height: 10px;
+    border-radius: 5px;
+    overflow: hidden;
+}
+.cel-ai-bar {
+    width: 0%;
+    background: #0073aa;
+    height: 100%;
+    transition: width 0.3s;
+}
+.cel-ai-status-text {
+    font-size: 10px;
+    color: #666;
+}
+.cel-ai-cancel-btn {
+    border: none;
+    background: none;
+    color: red;
+    cursor: pointer;
+    font-size: 10px;
+    padding: 0;
+    margin-left: 5px;
+}
+.cel-ai-cancel-btn:hover {
+    text-decoration: underline;
+}
