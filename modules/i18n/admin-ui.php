@@ -240,26 +240,18 @@ class CEL_AI_Admin_UI {
 
 			<?php elseif ( $active_tab == 'translations' ) : ?>
 				<h2><?php _e( 'Content Overview', 'cel-ai' ); ?></h2>
-				<p><?php _e( 'Overview of your pages and their translated versions.', 'cel-ai' ); ?></p>
+				<p><?php _e( 'Overview of your pages and their translated versions. Click a language code to Edit or Regenerate.', 'cel-ai' ); ?></p>
 				<?php
 				$active_langs = get_option( 'cel_ai_active_languages', [] );
 				$all_supported = CEL_AI_I18N_Controller::get_supported_languages();
 				
-				// Fetch original posts
 				$args = [
 					'post_type'      => [ 'post', 'page', 'product' ],
 					'posts_per_page' => -1,
 					'meta_query'     => [
 						'relation' => 'OR',
-						[
-							'key'     => CEL_AI_I18N_Controller::META_IS_ORIGINAL,
-							'value'   => '1',
-							'compare' => '=',
-						],
-						[
-							'key'     => CEL_AI_I18N_Controller::META_GROUP_ID,
-							'compare' => 'NOT EXISTS',
-						],
+						[ 'key' => CEL_AI_I18N_Controller::META_IS_ORIGINAL, 'value' => '1', 'compare' => '=' ],
+						[ 'key' => CEL_AI_I18N_Controller::META_GROUP_ID, 'compare' => 'NOT EXISTS' ],
 					],
 				];
 				$originals = new WP_Query( $args );
@@ -287,17 +279,26 @@ class CEL_AI_Admin_UI {
 							<td>
 								<?php foreach ( $active_langs as $code ) : 
 									if ( $code === $site_lang ) continue;
-									if ( isset( $translations[ $code ] ) ) : ?>
-										<a href="<?php echo get_edit_post_link( $translations[ $code ]->ID ); ?>" style="color: green; font-weight: bold; text-decoration: none; margin-right: 10px;" title="<?php echo esc_attr( $all_supported[$code]['name'] ); ?>">
-											<?php echo strtoupper( $code ); ?> ✓
-										</a>
+									
+									$trans_post = isset( $translations[ $code ] ) ? $translations[ $code ] : null;
+									$status = $trans_post ? get_post_meta( $trans_post->ID, CEL_AI_I18N_Controller::META_STATUS, true ) : '';
+
+									if ( $trans_post ) : ?>
+										<div style="display: inline-block; margin-right: 15px; border-right: 1px solid #ddd; padding-right: 15px;">
+											<a href="<?php echo get_edit_post_link( $trans_post->ID ); ?>" 
+											   style="color: <?php echo ($status === 'failed' ? 'red' : 'green'); ?>; font-weight: bold; text-decoration: none;" 
+											   title="<?php echo esc_attr( $all_supported[$code]['name'] ); ?>">
+												<?php echo strtoupper( $code ); ?> <?php echo ($status === 'failed' ? '✗' : '✓'); ?>
+											</a>
+											<button type="button" class="button-link cel-ai-translate-btn" data-post-id="<?php echo $id; ?>" data-lang="<?php echo $code; ?>" style="font-size: 10px; color: #666; margin-left:5px;">[<?php _e('Regen', 'cel-ai'); ?>]</button>
+										</div>
 									<?php else : ?>
 										<button type="button" class="button button-small cel-ai-translate-btn" data-post-id="<?php echo $id; ?>" data-lang="<?php echo $code; ?>" style="margin-right: 5px;">
 											<?php echo strtoupper( $code ); ?>
 										</button>
 									<?php endif; ?>
 								<?php endforeach; ?>
-								<div class="cel-ai-dashboard-progress" style="margin-top:5px;"></div>
+								<div class="cel-ai-dashboard-progress" id="progress-dashboard-<?php the_ID(); ?>" style="margin-top:5px;"></div>
 							</td>
 						</tr>
 						<?php endwhile; wp_reset_postdata(); else : ?>

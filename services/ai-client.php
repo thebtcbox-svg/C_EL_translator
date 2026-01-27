@@ -73,7 +73,8 @@ class CEL_AI_AI_Client {
 		}
 
 		$status_code = wp_remote_retrieve_response_code( $response );
-		$body        = json_decode( wp_remote_retrieve_body( $response ), true );
+		$body_text   = wp_remote_retrieve_body( $response );
+		$body        = json_decode( $body_text, true );
 
 		if ( 200 === $status_code ) {
 			$translated_text = isset( $body['choices'][0]['message']['content'] ) ? trim( $body['choices'][0]['message']['content'] ) : '';
@@ -83,7 +84,7 @@ class CEL_AI_AI_Client {
 			return [ 'success' => false, 'message' => __( 'Empty response from AI.', 'cel-ai' ) ];
 		}
 
-		$error_message = isset( $body['error']['message'] ) ? $body['error']['message'] : __( 'Unknown error', 'cel-ai' );
+		$error_message = isset( $body['error']['message'] ) ? $body['error']['message'] : ( ! empty($body_text) ? $body_text : __( 'Unknown error', 'cel-ai' ) );
 		CEL_AI_Logger::error( "OpenRouter Error ({$status_code}): {$error_message}" );
 
 		return [
@@ -95,10 +96,6 @@ class CEL_AI_AI_Client {
 
 	/**
 	 * Get the system prompt with variables replaced
-	 *
-	 * @param string $source_lang
-	 * @param string $target_lang
-	 * @return string
 	 */
 	private function get_system_prompt( $source_lang, $target_lang ) {
 		$default_prompt = "You are a professional technical translator.\n" .
@@ -118,8 +115,6 @@ class CEL_AI_AI_Client {
 
 	/**
 	 * Test connection to OpenRouter
-	 *
-	 * @return array
 	 */
 	public function test_connection() {
 		if ( empty( $this->api_key ) ) {
@@ -144,7 +139,6 @@ class CEL_AI_AI_Client {
 		] );
 
 		if ( is_wp_error( $response ) ) {
-			CEL_AI_Logger::error( 'Connection test failed: ' . $response->get_error_message() );
 			return [
 				'success' => false,
 				'message' => $response->get_error_message(),
@@ -152,7 +146,8 @@ class CEL_AI_AI_Client {
 		}
 
 		$status_code = wp_remote_retrieve_response_code( $response );
-		$body        = json_decode( wp_remote_retrieve_body( $response ), true );
+		$body_text   = wp_remote_retrieve_body( $response );
+		$body        = json_decode( $body_text, true );
 
 		if ( 200 === $status_code ) {
 			return [
@@ -161,8 +156,8 @@ class CEL_AI_AI_Client {
 			];
 		}
 
-		$error_message = isset( $body['error']['message'] ) ? $body['error']['message'] : __( 'Unknown error', 'cel-ai' );
-
+		$error_message = isset( $body['error']['message'] ) ? $body['error']['message'] : ( ! empty($body_text) ? $body_text : __( 'Unknown error', 'cel-ai' ) );
+		
 		if ( 401 === $status_code ) {
 			return [ 'success' => false, 'message' => __( 'Invalid API key', 'cel-ai' ) ];
 		} elseif ( 429 === $status_code ) {
@@ -177,8 +172,6 @@ class CEL_AI_AI_Client {
 
 	/**
 	 * Get required headers for OpenRouter
-	 *
-	 * @return array
 	 */
 	private function get_headers() {
 		return [
