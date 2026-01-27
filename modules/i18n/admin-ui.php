@@ -34,7 +34,6 @@ class CEL_AI_Admin_UI {
 		register_setting( 'cel_ai_settings_group', 'cel_ai_openrouter_key' );
 		register_setting( 'cel_ai_settings_group', 'cel_ai_model_id' );
 		register_setting( 'cel_ai_settings_group', 'cel_ai_auto_switcher' );
-		register_setting( 'cel_ai_settings_group', 'cel_ai_github_repo' );
 
 		add_settings_section(
 			'cel_ai_main_section',
@@ -63,14 +62,6 @@ class CEL_AI_Admin_UI {
 			'cel_ai_auto_switcher',
 			__( 'Auto-inject Switcher', 'cel-ai' ),
 			[ $this, 'render_auto_switcher_field' ],
-			'cel-ai-settings',
-			'cel_ai_main_section'
-		);
-
-		add_settings_field(
-			'cel_ai_github_repo',
-			__( 'GitHub Repository', 'cel-ai' ),
-			[ $this, 'render_github_repo_field' ],
 			'cel-ai-settings',
 			'cel_ai_main_section'
 		);
@@ -110,14 +101,12 @@ class CEL_AI_Admin_UI {
 		echo '<p class="description">' . __( 'Automatically add the language switcher to the bottom of pages/products.', 'cel-ai' ) . '</p>';
 	}
 
-	public function render_github_repo_field() {
-		$val = get_option( 'cel_ai_github_repo', 'thebtcbox-svg/C_EL_translator' );
-		echo '<input type="text" name="cel_ai_github_repo" value="' . esc_attr( $val ) . '" class="regular-text" />';
-		echo '<p class="description">' . __( 'GitHub username/repository for updates (e.g. "thebtcbox-svg/C_EL_translator").', 'cel-ai' ) . '</p>';
-	}
-
 	public function render_settings_page() {
 		$active_tab = isset( $_GET['tab'] ) ? $_GET['tab'] : 'general';
+		$queue = get_option( CEL_AI_Job_Queue::OPTION_NAME, [] );
+		$active_jobs = array_filter( $queue, function( $job ) {
+			return in_array( $job['status'], [ 'pending', 'running', 'retry' ] );
+		} );
 		?>
 		<div class="wrap">
 			<h1><?php _e( 'AI Translate Settings', 'cel-ai' ); ?></h1>
@@ -141,11 +130,53 @@ class CEL_AI_Admin_UI {
 				<div id="cel-ai-test-result" style="margin-top: 10px;"></div>
 				<hr>
 				<h2><?php _e( 'Plugin Updates', 'cel-ai' ); ?></h2>
+				<p class="description"><?php _e( 'Linked Repository: thebtcbox-svg/C_EL_translator', 'cel-ai' ); ?></p>
 				<button type="button" id="cel-ai-check-updates" class="button"><?php _e( 'Check for Updates from GitHub', 'cel-ai' ); ?></button>
 				<div id="cel-ai-update-result" style="margin-top: 10px;"></div>
 			<?php elseif ( $active_tab == 'tools' ) : ?>
-				<h2><?php _e( 'Bulk Translation', 'cel-ai' ); ?></h2>
-				<p><?php _e( 'Select a page and target language to translate.', 'cel-ai' ); ?></p>
+				<h2><?php _e( 'Current Translation Queue', 'cel-ai' ); ?></h2>
+				<div id="cel-ai-global-queue">
+					<?php if ( empty( $active_jobs ) ) : ?>
+						<p><?php _e( 'No active jobs in the queue.', 'cel-ai' ); ?></p>
+					<?php else : ?>
+						<table class="wp-list-table widefat fixed striped">
+							<thead>
+								<tr>
+									<th><?php _e( 'Page/Product', 'cel-ai' ); ?></th>
+									<th><?php _e( 'Language', 'cel-ai' ); ?></th>
+									<th><?php _e( 'Progress', 'cel-ai' ); ?></th>
+									<th><?php _e( 'Actions', 'cel-ai' ); ?></th>
+								</tr>
+							</thead>
+							<tbody>
+								<?php foreach ( $active_jobs as $job ) : 
+									$p = get_post( $job['post_id'] );
+									$title = $p ? $p->post_title : 'Unknown';
+									$pct = isset( $job['progress'] ) ? $job['progress']['percent'] : 0;
+								?>
+								<tr id="job-row-<?php echo $job['id']; ?>">
+									<td><?php echo esc_html( $title ); ?></td>
+									<td><?php echo esc_html( strtoupper( $job['target_language'] ) ); ?></td>
+									<td>
+										<div class="cel-ai-progress-container" id="progress-global-<?php echo $job['id']; ?>">
+											<div style="width: 100%; background: #eee; height: 10px; border-radius: 5px; overflow: hidden;">
+												<div class="cel-ai-bar" style="width: <?php echo $pct; ?>%; background: #0073aa; height: 100%;"></div>
+											</div>
+											<small class="cel-ai-status-text" data-job-id="<?php echo $job['id']; ?>"><?php echo ucfirst( $job['status'] ); ?> (<?php echo $pct; ?>%)</small>
+										</div>
+									</td>
+									<td>
+										<button type="button" class="button-link cel-ai-cancel-btn" data-job-id="<?php echo $job['id']; ?>" style="color:red;"><?php _e( 'Cancel', 'cel-ai' ); ?></button>
+									</td>
+								</tr>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					<?php endif; ?>
+				</div>
+
+				<hr>
+				<h2><?php _e( 'New Bulk Translation', 'cel-ai' ); ?></h2>
 				<table class="form-table">
 					<tr>
 						<th><?php _e( 'Select Page/Product', 'cel-ai' ); ?></th>
@@ -175,12 +206,6 @@ class CEL_AI_Admin_UI {
 					</tr>
 				</table>
 				<button type="button" id="cel-ai-run-bulk" class="button button-primary"><?php _e( 'Start Translation', 'cel-ai' ); ?></button>
-				<div id="cel-ai-bulk-progress" style="display:none; margin-top: 20px;">
-					<div style="width: 100%; background: #eee; height: 20px; border-radius: 10px; overflow: hidden;">
-						<div id="cel-ai-bulk-bar" style="width: 0%; background: #0073aa; height: 100%; transition: width 0.3s;"></div>
-					</div>
-					<p id="cel-ai-bulk-status"></p>
-				</div>
 				<div id="cel-ai-bulk-result" style="margin-top: 10px;"></div>
 			<?php elseif ( $active_tab == 'logs' ) : ?>
 				<h2><?php _e( 'Plugin Logs', 'cel-ai' ); ?></h2>
@@ -225,6 +250,15 @@ class CEL_AI_Admin_UI {
 				}, 3000);
 			}
 
+			// Auto-start polling for all active jobs visible on settings page
+			$('#cel-ai-global-queue tr').each(function() {
+				var row = $(this);
+				var jobId = row.find('.cel-ai-status-text').data('job-id');
+				if (jobId) {
+					pollJobStatus(jobId, 'progress-global-' + jobId + ' .cel-ai-bar', 'progress-global-' + jobId + ' .cel-ai-status-text');
+				}
+			});
+
 			$('#cel-ai-check-updates').on('click', function() {
 				var btn = $(this);
 				btn.prop('disabled', true).text('Checking...');
@@ -262,8 +296,6 @@ class CEL_AI_Admin_UI {
 			$('#cel-ai-run-bulk').on('click', function() {
 				var btn = $(this);
 				btn.prop('disabled', true).text('Queuing...');
-				$('#cel-ai-bulk-progress').show();
-				$('#cel-ai-bulk-bar').css('width', '0%');
 
 				$.post(ajaxurl, {
 					action: 'cel_ai_trigger_translation',
@@ -273,17 +305,17 @@ class CEL_AI_Admin_UI {
 				}, function(response) {
 					btn.prop('disabled', false).text('Start Translation');
 					if (response.success) {
-						pollJobStatus(response.data.job_id, 'cel_ai_bulk_bar', 'cel_ai_bulk_status', 'cel_ai_bulk_result');
+						window.location.reload(); // Reload to show the new job in the monitor
 					} else {
 						$('#cel-ai-bulk-result').html('<span style="color: red;">' + response.data.message + '</span>');
 					}
 				});
 			});
 
-			// Auto-start polling for existing active jobs on sidebar
+			// Sidebar logic
 			$('.cel-ai-progress-container:visible').each(function() {
 				var container = $(this);
-				var jobId = container.find('.cel-ai-job-id').data('job-id');
+				var jobId = container.find('.cel-ai-status-text').data('job-id');
 				if (jobId) {
 					pollJobStatus(jobId, container.attr('id') + ' .cel-ai-bar', container.attr('id') + ' .cel-ai-status-text');
 				}
@@ -383,7 +415,7 @@ class CEL_AI_Admin_UI {
 			echo '</div>';
 			echo '<div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">';
 			if ( $active_job ) {
-				echo '<small class="cel-ai-status-text" class="cel-ai-job-id" data-job-id="' . $active_job['id'] . '">Status: ' . esc_html( ucfirst( $active_job['status'] ) ) . '</small>';
+				echo '<small class="cel-ai-status-text" data-job-id="' . $active_job['id'] . '">Status: ' . esc_html( ucfirst( $active_job['status'] ) ) . ' (' . $pct . '%)</small>';
 				echo ' <button type="button" class="cel-ai-cancel-btn" data-job-id="' . $active_job['id'] . '" style="border:none; background:none; color:red; cursor:pointer; font-size:10px; padding:0;">[Cancel]</button>';
 			} else {
 				echo '<small class="cel-ai-status-text"></small>';
@@ -443,10 +475,7 @@ class CEL_AI_Admin_UI {
 
 	public function ajax_check_updates() {
 		check_ajax_referer( 'cel_ai_update_nonce', 'nonce' );
-		$repo = get_option( 'cel_ai_github_repo', 'thebtcbox-svg/C_EL_translator' );
-		if ( empty( $repo ) ) {
-			wp_send_json_error( [ 'message' => 'Please configure your GitHub repository path first.' ] );
-		}
+		$repo = 'thebtcbox-svg/C_EL_translator';
 		$url = "https://api.github.com/repos/{$repo}/releases/latest";
 		$response = wp_remote_get( $url, [ 'headers' => [ 'User-Agent' => 'WordPress/' . get_bloginfo('version') ] ] );
 		if ( is_wp_error( $response ) ) {
