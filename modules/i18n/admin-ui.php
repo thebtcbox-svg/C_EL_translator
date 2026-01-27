@@ -402,8 +402,9 @@ class CEL_AI_Admin_UI {
 			wp_send_json_error( [ 'message' => 'No releases found in this repository.' ] );
 		}
 		if ( version_compare( CEL_AI_VERSION, $latest_version, '<' ) ) {
-			$download_url = $body['zipball_url'];
-			wp_send_json_success( [ 'message' => "New version available: <strong>{$latest_version}</strong>. <a href='{$download_url}' class='button'>Download ZIP</a>" ] );
+			$basename = plugin_basename( CEL_AI_PATH . 'cel-ai.php' );
+			$update_url = wp_nonce_url( self_admin_url( 'update.php?action=upgrade-plugin&plugin=' . urlencode( $basename ) ), 'upgrade-plugin_' . $basename );
+			wp_send_json_success( [ 'message' => "New version available: <strong>{$latest_version}</strong>. <a href='{$update_url}' class='button button-primary'>Update Automatically Now</a>" ] );
 		} else {
 			wp_send_json_success( [ 'message' => 'You are using the latest version (' . CEL_AI_VERSION . ').' ] );
 		}
