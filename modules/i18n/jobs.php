@@ -187,7 +187,46 @@ class CEL_AI_Translation_Processor {
 		update_post_meta( $translated_post_id, CEL_AI_I18N_Controller::META_IS_ORIGINAL, '0' );
 		update_post_meta( $translated_post_id, CEL_AI_I18N_Controller::META_STATUS, 'draft' );
 
+		// Copy essential metadata (Images, Prices, etc.)
+		$this->copy_essential_meta( $post_id, $translated_post_id );
+
 		return [ 'success' => true ];
+	}
+
+	/**
+	 * Copy essential metadata from original to translation
+	 */
+	private function copy_essential_meta( $source_id, $target_id ) {
+		$keys_to_copy = [
+			'_thumbnail_id',
+			'_product_image_gallery',
+			'_price',
+			'_regular_price',
+			'_sale_price',
+			'_sku',
+			'_stock',
+			'_stock_status',
+			'_manage_stock',
+			'_weight',
+			'_length',
+			'_width',
+			'_height',
+			'_product_attributes',
+			'_upsell_ids',
+			'_crosssell_ids',
+			'_purchase_note',
+			'_default_attributes',
+			'_virtual',
+			'_downloadable',
+			'_product_version',
+		];
+
+		foreach ( $keys_to_copy as $key ) {
+			$val = get_post_meta( $source_id, $key, true );
+			if ( $val !== '' ) {
+				update_post_meta( $target_id, $key, $val );
+			}
+		}
 	}
 
 	/**
