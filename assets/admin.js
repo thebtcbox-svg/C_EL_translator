@@ -20,10 +20,20 @@ jQuery(document).ready(function($) {
                         } else {
                             if (resultId) $('#' + resultId).html('<span style="color: red;">Job Failed. Check logs.</span>');
                         }
+                    } else if (job.status === 'running' || job.status === 'pending' || job.status === 'retry') {
+                        // Ensure the queue is being processed
+                        triggerQueueProcessing();
                     }
                 }
             });
         }, 3000);
+    }
+
+    function triggerQueueProcessing() {
+        $.post(ajaxurl, {
+            action: 'cel_ai_process_queue_manual',
+            nonce: celAiAdmin.jobStatusNonce
+        });
     }
 
     // Auto-start polling for all active jobs visible on settings page
@@ -81,6 +91,7 @@ jQuery(document).ready(function($) {
         }, function(response) {
             btn.prop('disabled', false).text('Start Translation');
             if (response.success) {
+                triggerQueueProcessing();
                 window.location.reload();
             } else {
                 $('#cel-ai-bulk-result').html('<span style="color: red;">' + response.data.message + '</span>');
@@ -125,6 +136,7 @@ jQuery(document).ready(function($) {
             nonce: celAiAdmin.transNonce
         }, function(response) {
             if (response.success) {
+                triggerQueueProcessing();
                 pollJobStatus(response.data.job_id, 'progress-' + lang + ' .cel-ai-bar', 'progress-' + lang + ' .cel-ai-status-text');
             } else {
                 alert(response.data.message);
