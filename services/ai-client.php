@@ -15,7 +15,13 @@ class CEL_AI_AI_Client {
 
 	public function __construct() {
 		$this->api_key  = defined( 'CEL_AI_OPENROUTER_KEY' ) ? CEL_AI_OPENROUTER_KEY : get_option( 'cel_ai_openrouter_key' );
-		$this->model_id = get_option( 'cel_ai_model_id', 'mistralai/mistral-7b-instruct' );
+		
+		$manual_model = get_option( 'cel_ai_manual_model_id' );
+		if ( ! empty( $manual_model ) ) {
+			$this->model_id = $manual_model;
+		} else {
+			$this->model_id = get_option( 'cel_ai_model_id', 'mistralai/mistral-7b-instruct' );
+		}
 	}
 
 	/**

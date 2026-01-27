@@ -52,6 +52,7 @@ class CEL_AI_Admin_UI {
 	public function register_settings() {
 		register_setting( 'cel_ai_settings_group', 'cel_ai_openrouter_key' );
 		register_setting( 'cel_ai_settings_group', 'cel_ai_model_id' );
+		register_setting( 'cel_ai_settings_group', 'cel_ai_manual_model_id' );
 		register_setting( 'cel_ai_settings_group', 'cel_ai_switcher_location' );
 		register_setting( 'cel_ai_settings_group', 'cel_ai_publish_status' );
 
@@ -72,8 +73,16 @@ class CEL_AI_Admin_UI {
 
 		add_settings_field(
 			'cel_ai_model_id',
-			__( 'Model ID', 'cel-ai' ),
+			__( 'Model Selection', 'cel-ai' ),
 			[ $this, 'render_model_id_field' ],
+			'cel-ai-settings',
+			'cel_ai_main_section'
+		);
+
+		add_settings_field(
+			'cel_ai_manual_model_id',
+			__( 'Manual Model ID (Optional)', 'cel-ai' ),
+			[ $this, 'render_manual_model_id_field' ],
 			'cel-ai-settings',
 			'cel_ai_main_section'
 		);
@@ -121,6 +130,13 @@ class CEL_AI_Admin_UI {
 			echo '<option value="' . esc_attr( $id ) . '" ' . selected( $selected_model, $id, false ) . '>' . esc_html( $name ) . '</option>';
 		}
 		echo '</select>';
+		echo '<p class="description">' . __( 'Choose a model or enter one manually below.', 'cel-ai' ) . '</p>';
+	}
+
+	public function render_manual_model_id_field() {
+		$val = get_option( 'cel_ai_manual_model_id', '' );
+		echo '<input type="text" name="cel_ai_manual_model_id" value="' . esc_attr( $val ) . '" class="regular-text" placeholder="e.g. google/gemini-pro" />';
+		echo '<p class="description">' . __( 'If provided, this ID will take priority over the dropdown selection.', 'cel-ai' ) . '</p>';
 	}
 
 	public function render_switcher_location_field() {
@@ -130,6 +146,7 @@ class CEL_AI_Admin_UI {
 			'top'    => __( 'Top of Content', 'cel-ai' ),
 			'bottom' => __( 'Bottom of Content', 'cel-ai' ),
 			'both'   => __( 'Both Top and Bottom', 'cel-ai' ),
+			'header' => __( 'Site Header (Fixed)', 'cel-ai' ),
 		];
 		echo '<select name="cel_ai_switcher_location">';
 		foreach ( $options as $k => $v ) {

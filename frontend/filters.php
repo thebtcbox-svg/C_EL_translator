@@ -13,6 +13,15 @@ class CEL_AI_Frontend_Filters {
 		add_action( 'template_redirect', [ $this, 'handle_language_routing' ] );
 		add_filter( 'query_vars', [ $this, 'add_query_vars' ] );
 		add_filter( 'the_content', [ $this, 'maybe_inject_switcher' ] );
+		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_frontend_assets' ] );
+		add_action( 'wp_body_open', [ $this, 'inject_header_switcher' ] );
+		add_filter( 'body_class', [ $this, 'add_body_classes' ] );
+	}
+
+	public function enqueue_frontend_assets() {
+		if ( get_option( 'cel_ai_switcher_location', 'none' ) !== 'none' ) {
+			wp_enqueue_style( 'cel-ai-frontend-style', CEL_AI_URL . 'assets/frontend.css', [], CEL_AI_VERSION );
+		}
 	}
 
 	/**
@@ -24,7 +33,7 @@ class CEL_AI_Frontend_Filters {
 		}
 
 		$location = get_option( 'cel_ai_switcher_location', 'none' );
-		if ( 'none' === $location ) {
+		if ( in_array( $location, [ 'none', 'header' ] ) ) {
 			return $content;
 		}
 
@@ -44,6 +53,26 @@ class CEL_AI_Frontend_Filters {
 	}
 
 	/**
+	 * Inject header switcher
+	 */
+	public function inject_header_switcher() {
+		if ( get_option( 'cel_ai_switcher_location' ) === 'header' ) {
+			$switcher_obj = new CEL_AI_Switcher();
+			echo '<div class="cel-ai-header-switcher">' . $switcher_obj->render_switcher() . '</div>';
+		}
+	}
+
+	/**
+	 * Add body classes
+	 */
+	public function add_body_classes( $classes ) {
+		if ( get_option( 'cel_ai_switcher_location' ) === 'header' ) {
+			$classes[] = 'cel-ai-has-header-switcher';
+		}
+		return $classes;
+	}
+
+	/**
 	 * Add 'lang' to query vars
 	 */
 	public function add_query_vars( $vars ) {
@@ -53,7 +82,6 @@ class CEL_AI_Frontend_Filters {
 
 	/**
 	 * Handle language routing
-	 * Resolves the correct post version based on the language requested.
 	 */
 	public function handle_language_routing() {
 		$lang = get_query_var( 'lang' );
@@ -68,13 +96,12 @@ class CEL_AI_Frontend_Filters {
 
 		$current_lang = get_post_meta( $current_post->ID, CEL_AI_I18N_Controller::META_LANGUAGE, true );
 		if ( $current_lang === $lang ) {
-			return; // Already on the correct language
+			return;
 		}
 
 		$translations = CEL_AI_I18N_Controller::get_translations( $current_post->ID );
 		
 		if ( isset( $translations[ $lang ] ) ) {
-			// Redirect to the translated post
 			wp_redirect( get_permalink( $translations[ $lang ]->ID ) );
 			exit;
 		}
