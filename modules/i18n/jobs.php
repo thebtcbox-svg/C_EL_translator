@@ -37,7 +37,7 @@ class CEL_AI_Job_Queue {
 			'status'          => 'pending',
 			'created_at'      => current_time( 'mysql' ),
 			'retries'         => 0,
-			'log'             => [],
+			'log'             => [ 'Job enqueued.' ],
 			'progress'        => [ 'current' => 0, 'total' => 0, 'percent' => 0 ],
 		];
 
@@ -58,44 +58,46 @@ class CEL_AI_Job_Queue {
 		}
 
 		// Find the first pending or retry-able job
-		$job_to_process = null;
+		$job_id = null;
 		foreach ( $queue as $id => $job ) {
 			if ( 'pending' === $job['status'] || 'retry' === $job['status'] ) {
-				$job_to_process = $job;
+				$job_id = $id;
 				break;
 			}
 		}
 
-		if ( ! $job_to_process ) {
+		if ( ! $job_id ) {
 			return;
 		}
 
-		$job_id = $job_to_process['id'];
 		$queue[ $job_id ]['status'] = 'running';
+		$queue[ $job_id ]['log'][]  = 'Processing started at ' . current_time( 'mysql' );
 		update_option( self::OPTION_NAME, $queue, false );
 
 		$processor = new CEL_AI_Translation_Processor();
-		$result = $processor->process_job( $job_to_process, $job_id );
+		$result = $processor->process_job( $queue[ $job_id ], $job_id );
 
 		// Refresh queue as it might have changed during processing
 		$queue = get_option( self::OPTION_NAME, [] );
 
 		if ( is_array($result) && isset($result['success']) && $result['success'] ) {
 			$queue[ $job_id ]['status'] = 'completed';
-			$queue[ $job_id ]['log'][] = 'Completed successfully.';
+			$queue[ $job_id ]['log'][] = 'Successfully completed at ' . current_time( 'mysql' );
 			$queue[ $job_id ]['progress']['percent'] = 100;
 		} else {
 			$error_message = is_array($result) && isset( $result['message'] ) ? $result['message'] : 'Unknown error';
-			$queue[ $job_id ]['log'][] = 'Error: ' . $error_message;
+			$queue[ $job_id ]['log'][] = 'ERROR: ' . $error_message;
 
 			// Handle retries for specific errors (e.g. 429, 500+)
 			$status_code = is_array($result) && isset( $result['status'] ) ? $result['status'] : 0;
 			if ( ( 429 === $status_code || $status_code >= 500 ) && $queue[ $job_id ]['retries'] < 3 ) {
 				$queue[ $job_id ]['status']  = 'retry';
 				$queue[ $job_id ]['retries']++;
+				$queue[ $job_id ]['log'][] = "Retry scheduled (Attempt {$queue[$job_id]['retries']})";
 				CEL_AI_Logger::info( "Retrying job {$job_id} (Attempt {$queue[$job_id]['retries']})" );
 			} else {
 				$queue[ $job_id ]['status'] = 'failed';
+				$queue[ $job_id ]['log'][] = 'Permanent failure.';
 				CEL_AI_Logger::error( "Job {$job_id} failed: " . $error_message );
 			}
 		}
@@ -140,23 +142,27 @@ class CEL_AI_Translation_Processor {
 
 		// Translate Title (if full or content-only)
 		if ( $mode === 'full' || $mode === 'content-only' ) {
+			$this->log_to_job($job_id, 'Translating title...');
 			$title_res = $client->translate( $post->post_title, $source_lang, $target_lang );
 			if ( ! is_array($title_res) || ! $title_res['success'] ) return $title_res;
 		}
 
 		// Translate Content (if full or content-only)
 		if ( $mode === 'full' || $mode === 'content-only' ) {
+			$this->log_to_job($job_id, 'Translating content...');
 			$content_res = $this->translate_with_chunking( $post->post_content, $source_lang, $target_lang, $client, $job_id );
 			if ( ! is_array($content_res) || ! $content_res['success'] ) return $content_res;
 		}
 
 		// Translate Excerpt (if full or content-only)
 		if ( ( $mode === 'full' || $mode === 'content-only' ) && ! empty( $post->post_excerpt ) ) {
+			$this->log_to_job($job_id, 'Translating excerpt...');
 			$excerpt_res = $client->translate( $post->post_excerpt, $source_lang, $target_lang );
 			if ( ! is_array($excerpt_res) || ! $excerpt_res['success'] ) return $excerpt_res;
 		}
 
 		// Create or Update translated post
+		$this->log_to_job($job_id, 'Writing to database...');
 		$translations = CEL_AI_I18N_Controller::get_translations( $post_id );
 		$group_id     = CEL_AI_I18N_Controller::ensure_group_id( $post_id );
 
@@ -192,7 +198,17 @@ class CEL_AI_Translation_Processor {
 		// Copy essential metadata (Images, Prices, etc.)
 		$this->copy_essential_meta( $post_id, $translated_post_id );
 
+		$this->log_to_job($job_id, "Successfully posted as ID {$translated_post_id} ({$publish_status})");
 		return [ 'success' => true ];
+	}
+
+	private function log_to_job( $job_id, $message ) {
+		if ( ! $job_id ) return;
+		$queue = get_option( CEL_AI_Job_Queue::OPTION_NAME, [] );
+		if ( isset( $queue[ $job_id ] ) ) {
+			$queue[ $job_id ]['log'][] = $message;
+			update_option( CEL_AI_Job_Queue::OPTION_NAME, $queue, false );
+		}
 	}
 
 	/**
@@ -243,7 +259,6 @@ class CEL_AI_Translation_Processor {
 			return $client->translate( $content, $source_lang, $target_lang );
 		}
 
-		// Split by double newline (paragraphs) first
 		$paragraphs = explode( "\n\n", $content );
 		$chunks = [];
 		$current_chunk = "";
@@ -254,13 +269,9 @@ class CEL_AI_Translation_Processor {
 					$chunks[] = trim( $current_chunk );
 					$current_chunk = "";
 				}
-
 				if ( mb_strlen( $para ) > $max_len ) {
-					// Hard split multibyte-safe
 					$para_chunks = $this->mb_str_split( $para, $max_len );
-					foreach ( $para_chunks as $pc ) {
-						$chunks[] = $pc;
-					}
+					foreach ( $para_chunks as $pc ) $chunks[] = $pc;
 				} else {
 					$current_chunk = $para;
 				}
@@ -268,9 +279,7 @@ class CEL_AI_Translation_Processor {
 				$current_chunk .= ( empty($current_chunk) ? "" : "\n\n" ) . $para;
 			}
 		}
-		if ( ! empty( $current_chunk ) ) {
-			$chunks[] = trim( $current_chunk );
-		}
+		if ( ! empty( $current_chunk ) ) $chunks[] = trim( $current_chunk );
 
 		$total_chunks = count( $chunks );
 		$translated_chunks = [];
@@ -279,6 +288,7 @@ class CEL_AI_Translation_Processor {
 		foreach ( $chunks as $chunk ) {
 			$processed_count++;
 			if ( $job_id ) {
+				$this->log_to_job($job_id, "Sending chunk {$processed_count} of {$total_chunks} to AI...");
 				$this->update_job_progress( $job_id, $processed_count, $total_chunks );
 			}
 
@@ -287,6 +297,7 @@ class CEL_AI_Translation_Processor {
 				return $res;
 			}
 			$translated_chunks[] = $res['translated_text'];
+			if ( $job_id ) $this->log_to_job($job_id, "Received translation for chunk {$processed_count}.");
 		}
 
 		return [
@@ -295,9 +306,6 @@ class CEL_AI_Translation_Processor {
 		];
 	}
 
-	/**
-	 * Multibyte safe string split
-	 */
 	private function mb_str_split( $string, $length ) {
 		$result = [];
 		$strlen = mb_strlen( $string );
@@ -307,16 +315,11 @@ class CEL_AI_Translation_Processor {
 		return $result;
 	}
 
-	/**
-	 * Update job progress in wp_options
-	 */
 	private function update_job_progress( $job_id, $current, $total ) {
 		$queue = get_option( CEL_AI_Job_Queue::OPTION_NAME, [] );
 		if ( isset( $queue[ $job_id ] ) ) {
 			$new_percent = round( ( $current / $total ) * 100 );
 			$old_percent = isset($queue[ $job_id ]['progress']['percent']) ? $queue[ $job_id ]['progress']['percent'] : -1;
-			
-			// Only update DB if percentage changed or it's the first/last chunk
 			if ( $new_percent !== $old_percent || $current === 1 || $current === $total ) {
 				$queue[ $job_id ]['progress'] = [
 					'current' => $current,
@@ -329,7 +332,6 @@ class CEL_AI_Translation_Processor {
 	}
 }
 
-// Add custom cron schedule if not exists
 add_filter( 'cron_schedules', function( $schedules ) {
     $schedules['minute'] = [
         'interval' => 60,
