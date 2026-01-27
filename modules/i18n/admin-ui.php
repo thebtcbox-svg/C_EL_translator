@@ -114,17 +114,6 @@ class CEL_AI_Admin_UI {
 		echo '<input type="text" name="cel_ai_github_repo" value="' . esc_attr( $val ) . '" class="regular-text" />';
 		echo '<p class="description">' . __( 'GitHub username/repository for updates (e.g. "thebtcbox-svg/C_EL_translator").', 'cel-ai' ) . '</p>';
 	}
->>>>>>>------- SEARCH
-		$repo = get_option( 'cel_ai_github_repo' );
-		if ( empty( $repo ) || $repo === 'username/repository' ) {
-			wp_send_json_error( [ 'message' => 'Please configure your GitHub repository path first.' ] );
-		}
-		$repo = get_option( 'cel_ai_github_repo', 'thebtcbox-svg/C_EL_translator' );
-		if ( empty( $repo ) ) {
-			wp_send_json_error( [ 'message' => 'Please configure your GitHub repository path first.' ] );
-		}
->>>>>>>+++++++ REPLACE
-
 
 	public function render_settings_page() {
 		$active_tab = isset( $_GET['tab'] ) ? $_GET['tab'] : 'general';
@@ -416,8 +405,8 @@ class CEL_AI_Admin_UI {
 
 	public function ajax_check_updates() {
 		check_ajax_referer( 'cel_ai_update_nonce', 'nonce' );
-		$repo = get_option( 'cel_ai_github_repo' );
-		if ( empty( $repo ) || $repo === 'username/repository' ) {
+		$repo = get_option( 'cel_ai_github_repo', 'thebtcbox-svg/C_EL_translator' );
+		if ( empty( $repo ) ) {
 			wp_send_json_error( [ 'message' => 'Please configure your GitHub repository path first.' ] );
 		}
 		$url = "https://api.github.com/repos/{$repo}/releases/latest";
