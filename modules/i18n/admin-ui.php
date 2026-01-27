@@ -202,7 +202,8 @@ class CEL_AI_Admin_UI {
 			<h1><?php _e( 'AI Translate Settings', 'cel-ai' ); ?></h1>
 			<h2 class="nav-tab-wrapper">
 				<a href="?page=cel-ai-settings&tab=general" class="nav-tab <?php echo $active_tab == 'general' ? 'nav-tab-active' : ''; ?>"><?php _e( 'General', 'cel-ai' ); ?></a>
-				<a href="?page=cel-ai-settings&tab=tools" class="nav-tab <?php echo $active_tab == 'tools' ? 'nav-tab-active' : ''; ?>"><?php _e( 'Tools', 'cel-ai' ); ?></a>
+				<a href="?page=cel-ai-settings&tab=translations" class="nav-tab <?php echo $active_tab == 'translations' ? 'nav-tab-active' : ''; ?>"><?php _e( 'Translations', 'cel-ai' ); ?></a>
+				<a href="?page=cel-ai-settings&tab=tools" class="nav-tab <?php echo $active_tab == 'tools' ? 'nav-tab-active' : ''; ?>"><?php _e( 'Queue', 'cel-ai' ); ?></a>
 				<a href="?page=cel-ai-settings&tab=logs" class="nav-tab <?php echo $active_tab == 'logs' ? 'nav-tab-active' : ''; ?>"><?php _e( 'Logs', 'cel-ai' ); ?></a>
 			</h2>
 
@@ -223,6 +224,75 @@ class CEL_AI_Admin_UI {
 				<p class="description"><?php _e( 'Linked Repository: thebtcbox-svg/C_EL_translator', 'cel-ai' ); ?></p>
 				<button type="button" id="cel-ai-check-updates" class="button"><?php _e( 'Check for Updates from GitHub', 'cel-ai' ); ?></button>
 				<div id="cel-ai-update-result" style="margin-top: 10px;"></div>
+
+			<?php elseif ( $active_tab == 'translations' ) : ?>
+				<h2><?php _e( 'Content Overview', 'cel-ai' ); ?></h2>
+				<p><?php _e( 'Overview of your pages and their translated versions.', 'cel-ai' ); ?></p>
+				<?php
+				$active_langs = get_option( 'cel_ai_active_languages', [] );
+				$all_supported = CEL_AI_I18N_Controller::get_supported_languages();
+				
+				// Fetch original posts
+				$args = [
+					'post_type'      => [ 'post', 'page', 'product' ],
+					'posts_per_page' => -1,
+					'meta_query'     => [
+						'relation' => 'OR',
+						[
+							'key'     => CEL_AI_I18N_Controller::META_IS_ORIGINAL,
+							'value'   => '1',
+							'compare' => '=',
+						],
+						[
+							'key'     => CEL_AI_I18N_Controller::META_GROUP_ID,
+							'compare' => 'NOT EXISTS',
+						],
+					],
+				];
+				$originals = new WP_Query( $args );
+				?>
+				<table class="wp-list-table widefat fixed striped">
+					<thead>
+						<tr>
+							<th><?php _e( 'Page / Product', 'cel-ai' ); ?></th>
+							<th><?php _e( 'Type', 'cel-ai' ); ?></th>
+							<th><?php _e( 'Translations', 'cel-ai' ); ?></th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php if ( $originals->have_posts() ) : while ( $originals->have_posts() ) : $originals->the_post(); 
+							$id = get_the_ID();
+							$translations = CEL_AI_I18N_Controller::get_translations( $id );
+							$site_lang = substr( get_locale(), 0, 2 );
+						?>
+						<tr>
+							<td>
+								<strong><a href="<?php echo get_edit_post_link( $id ); ?>"><?php the_title(); ?></a></strong>
+								<div class="row-actions"><span class="view"><a href="<?php the_permalink(); ?>"><?php _e( 'View Original', 'cel-ai' ); ?></a></span></div>
+							</td>
+							<td><?php echo ucfirst( get_post_type() ); ?></td>
+							<td>
+								<?php foreach ( $active_langs as $code ) : 
+									if ( $code === $site_lang ) continue;
+									if ( isset( $translations[ $code ] ) ) : ?>
+										<a href="<?php echo get_edit_post_link( $translations[ $code ]->ID ); ?>" style="color: green; font-weight: bold; text-decoration: none; margin-right: 10px;" title="<?php echo esc_attr( $all_supported[$code]['name'] ); ?>">
+											<?php echo strtoupper( $code ); ?> ✓
+										</a>
+									<?php else : ?>
+										<button type="button" class="button button-small cel-ai-translate-btn" data-post-id="<?php echo $id; ?>" data-lang="<?php echo $code; ?>" style="margin-right: 5px;">
+											<?php echo strtoupper( $code ); ?>
+										</button>
+									<?php endif; ?>
+								<?php endforeach; ?>
+								<div class="cel-ai-dashboard-progress" style="margin-top:5px;"></div>
+							</td>
+						</tr>
+						<?php endwhile; wp_reset_postdata(); else : ?>
+							<tr><td colspan="3"><?php _e( 'No content found.', 'cel-ai' ); ?></td></tr>
+						<?php endif; ?>
+					</tbody>
+				</table>
+
 			<?php elseif ( $active_tab == 'tools' ) : ?>
 				<h2><?php _e( 'Current Translation Queue', 'cel-ai' ); ?></h2>
 				<div id="cel-ai-global-queue">
@@ -329,6 +399,7 @@ class CEL_AI_Admin_UI {
 
 	public function render_translation_meta_box( $post ) {
 		$languages = CEL_AI_I18N_Controller::get_supported_languages();
+		$active_langs = get_option( 'cel_ai_active_languages', array_keys( $languages ) );
 		$translations = CEL_AI_I18N_Controller::get_translations( $post->ID );
 		$site_lang = substr( get_locale(), 0, 2 );
 		$queue = get_option( CEL_AI_Job_Queue::OPTION_NAME, [] );
@@ -337,7 +408,7 @@ class CEL_AI_Admin_UI {
 
 		echo '<div class="cel-ai-translation-list">';
 		foreach ( $languages as $code => $lang ) {
-			if ( $code === $site_lang ) {
+			if ( $code === $site_lang || ! in_array( $code, $active_langs ) ) {
 				continue;
 			}
 
