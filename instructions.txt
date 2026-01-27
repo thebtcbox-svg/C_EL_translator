@@ -1,0 +1,385 @@
+MULTILINGUAL AI MODULE FOR WORDPRESS + WOOCOMMERCE
+TECHNICAL SPECIFICATION (v1.1)
+
+⸻
+
+	1.	GOAL
+
+Build a custom WordPress plugin that provides multilingual functionality for WooCommerce products and regular pages without using WPML or Polylang.
+
+The plugin must:
+	•	Create separate translated pages/posts per language
+	•	Support manual and API-triggered translations
+	•	Include a frontend language switcher
+	•	Be performant and not slow down WordPress
+	•	Be extensible for future SEO, AI, Telegram, and automation features
+
+AI TRANSLATION PROVIDER
+
+The plugin MUST use OpenRouter.ai as the single AI gateway for all translation operations.
+
+Direct integration with OpenAI, Anthropic, Google, or any other AI provider is NOT allowed.
+All AI requests must go exclusively through OpenRouter.
+
+OpenRouter is used to:
+	•	Access multiple AI models via one unified API
+	•	Switch models without code changes
+	•	Support both FREE and PAID models
+	•	Control translation quality and cost
+	•	Future-proof the plugin against vendor lock-in
+
+⸻
+
+OPENROUTER API CONFIGURATION
+
+API Endpoint:
+https://openrouter.ai/api/v1/chat/completions
+
+Authentication:
+Authorization: Bearer {OPENROUTER_API_KEY}
+
+Required headers:
+HTTP-Referer: {SITE_URL}
+X-Title: {SITE_NAME}
+
+⸻
+
+API KEY MANAGEMENT (ADMIN UI)
+
+The OpenRouter API key MUST be configured via the WordPress admin panel.
+
+Admin Settings:
+	•	Location: WordPress Admin → Settings → AI Translate
+	•	Field: “OpenRouter API Key”
+	•	Input type: password field
+	•	The key must be stored in WordPress options table
+	•	The key must never be exposed on frontend
+	•	The key must never be committed to code or repository
+
+Optional advanced behavior:
+	•	Allow overriding API key via wp-config.php constant:
+define(‘CEL_AI_OPENROUTER_KEY’, ‘sk-…’);
+	•	If constant exists, it takes priority over admin setting
+	•	Admin UI should display “Key loaded from wp-config.php (read-only)”
+
+⸻
+
+API CONNECTION TESTING
+
+Admin UI must provide:
+	•	Button: “Test OpenRouter Connection”
+	•	Test request must:
+	•	Use the currently selected model
+	•	Send a minimal test prompt
+	•	Validate API key and headers
+
+Test result states:
+	•	Success (connection valid)
+	•	Invalid API key
+	•	Rate limit exceeded
+	•	Network or timeout error
+
+Test results must be shown immediately in admin UI.
+
+⸻
+
+MODEL SELECTION REQUIREMENTS
+
+The plugin must support dynamic OpenRouter model selection.
+
+Admin must be able to:
+	•	Select any OpenRouter model ID as a string
+	•	Change the model at any time without reconfiguration
+	•	Use FREE or PAID models
+
+Admin UI requirements:
+	•	Dropdown list of models
+	•	Each model shows:
+	•	Model name
+	•	Provider
+	•	FREE or PAID label
+	•	Selected model is stored in plugin settings
+
+Example model IDs:
+	•	mistralai/mistral-7b-instruct
+	•	meta-llama/llama-3-8b-instruct
+	•	anthropic/claude-3.5-sonnet
+	•	openai/gpt-4o
+
+The plugin must not hardcode or assume any specific model.
+
+⸻
+
+TRANSLATION PROMPT STANDARD
+
+All translations must use a strict system prompt.
+
+Default system message:
+
+“You are a professional technical translator.
+Translate the following content from {SOURCE_LANGUAGE} to {TARGET_LANGUAGE}.
+Preserve meaning, formatting, HTML tags, units, and WooCommerce structure.
+Do not add explanations or comments.
+Return only the translated content.”
+
+The system prompt must be:
+	•	Editable via WordPress filter hook
+	•	Applied to all OpenRouter translation requests
+
+⸻
+
+TOKEN AND RATE LIMITS
+
+Default limits:
+	•	Max characters per request: 4000
+	•	Max API requests per minute: 5
+	•	Max concurrent jobs: 1
+	•	Request timeout: 30 seconds
+
+If a limit is exceeded:
+	•	Translation job must be paused
+	•	Error must be logged
+	•	Job retried later via WP-Cron
+
+⸻
+
+FAILURE HANDLING
+
+If OpenRouter API returns:
+	•	401 → mark job as failed (invalid or missing API key)
+	•	429 → retry later with backoff
+	•	500+ → retry up to 3 times
+
+If translation fails:
+	•	Original content must remain unchanged
+	•	No partial or corrupted translations allowed
+	•	Failure must be visible in admin job status
+
+
+⸻
+
+	2.	SUPPORTED CONTENT TYPES
+
+	•	WooCommerce products (parent products only)
+	•	WooCommerce product variations (template-based by default)
+	•	WordPress pages
+	•	WordPress posts (optional, v2)
+
+⸻
+
+	3.	PERFORMANCE REQUIREMENTS (CRITICAL)
+
+Forbidden:
+	•	No AI or translation calls on save_post
+	•	No AI calls during frontend rendering
+	•	No synchronous bulk operations
+	•	No parallel API calls
+
+Allowed:
+	•	Admin-triggered actions via AJAX
+	•	Background processing via WP-Cron
+	•	REST API async jobs
+	•	Strict rate limits
+
+All translation operations must be asynchronous.
+
+⸻
+
+	4.	DATA MODEL
+
+Each language version is a separate WordPress post.
+
+Required post meta fields:
+
+_cel_ai_trans_group_id        (UUID, shared across all translations)
+_cel_ai_trans_language        (string, e.g. en, de, ru)
+_cel_ai_trans_source_lang     (original language code)
+_cel_ai_trans_original_id     (post_id of original content)
+_cel_ai_trans_is_original     (boolean 0/1)
+_cel_ai_trans_status          (draft | pending | approved | failed)
+
+Content fields per language:
+
+_cel_ai_title
+_cel_ai_content
+_cel_ai_excerpt
+_cel_ai_slug
+
+SEO fields per language:
+
+_cel_ai_seo_title
+_cel_ai_seo_description
+
+⸻
+
+	5.	TRANSLATION FLOW
+
+Manual (Admin UI):
+	1.	Admin clicks “Translate to {LANG}” on product or page edit screen
+	2.	AJAX request is sent
+	3.	Translation job is created
+	4.	Job is queued
+	5.	WP-Cron processes job
+	6.	New translated post is created or updated
+	7.	Status is logged
+
+API-triggered:
+	•	External system updates product content
+	•	External system calls translation API endpoint
+	•	Translation job runs asynchronously
+
+⸻
+
+	6.	ADMIN UI REQUIREMENTS
+
+On product and page edit screens:
+	•	Button: Translate to EN
+	•	Button: Translate to DE
+	•	Button: Update Translation
+	•	Button: Dry Run (preview only, no save)
+
+Bulk actions:
+	•	Translate selected products
+	•	Translate by category (limited batch size)
+
+All buttons must:
+	•	Use AJAX
+	•	Use nonce validation
+	•	Never block admin UI
+
+⸻
+
+	7.	VARIATION TRANSLATION STRATEGY
+
+Default behavior:
+	•	Do NOT translate variations individually
+	•	Use template-based variation titles
+
+Template example:
+“{product_name} - {attribute}: {value}”
+
+Optional setting (advanced):
+	•	Full variation translation (disabled by default)
+
+⸻
+
+	8.	API ENDPOINTS
+
+POST /wp-json/cel-ai/v1/translate
+
+Payload:
+{
+“post_id”: 123,
+“target_language”: “de”,
+“mode”: “full | content-only | seo-only”,
+“async”: true
+}
+
+Response:
+{
+“job_id”: “uuid”,
+“status”: “queued”
+}
+
+GET /wp-json/cel-ai/v1/job/{job_id}
+
+Response:
+{
+“status”: “queued | running | completed | failed”,
+“log”: []
+}
+
+⸻
+
+	9.	JOB QUEUE SYSTEM
+
+	•	Jobs stored in wp_options (v1)
+	•	One job processed per cron tick
+	•	Max execution time per job: 20 seconds
+	•	No parallel jobs
+
+Fallback:
+	•	wp_schedule_single_event for shared hosting (cPanel)
+
+⸻
+
+	10.	FRONTEND LANGUAGE SWITCHER
+
+	•	Simple dropdown or toggle
+	•	Language determined by URL prefix or query param
+	•	Example URLs:
+/de/product-name
+/en/product-name
+
+Switcher must:
+	•	Load translated post by group_id + language
+	•	Replace title, content, excerpt, and SEO meta
+	•	Not duplicate content rendering logic
+
+⸻
+
+	11.	SEO REQUIREMENTS
+
+	•	hreflang tags for all available languages
+	•	Canonical URL defaults to self
+	•	Separate SEO meta per language
+	•	Slug strategy configurable:
+	•	translated slug
+	•	original slug + language suffix
+
+⸻
+
+	12.	SECURITY
+
+	•	API keys stored in wp-config.php
+	•	Capability checks for all admin actions
+	•	Nonce validation for AJAX
+	•	Rate limits for translation calls
+
+⸻
+
+	13.	FILE ARCHITECTURE
+
+wp-content/plugins/cel-ai/
+│
+├─ cel-ai.php
+├─ config/
+│   ├─ languages.php
+│   └─ limits.php
+├─ modules/
+│   ├─ i18n/
+│   │   ├─ controller.php
+│   │   ├─ admin-ui.php
+│   │   ├─ api.php
+│   │   ├─ jobs.php
+│   │   └─ templates.php
+│   ├─ seo/
+│   └─ woocommerce/
+├─ services/
+│   ├─ ai-client.php
+│   ├─ text-normalizer.php
+│   └─ logger.php
+├─ frontend/
+│   ├─ switcher.php
+│   └─ filters.php
+├─ logs/
+└─ README.md
+
+⸻
+
+	14.	NON-GOALS (v1)
+
+	•	No automatic translation on publish
+	•	No frontend editing
+	•	No parallel bulk translation
+	•	No dependency on WPML or Polylang
+
+⸻
+
+	15.	FUTURE EXTENSIONS (v2+)
+
+	•	Translation memory
+	•	Review workflow with diff view
+	•	Telegram notifications
+	•	Admin dashboard
+	•	Custom DB tables for jobs
