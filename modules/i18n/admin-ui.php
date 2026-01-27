@@ -53,6 +53,7 @@ class CEL_AI_Admin_UI {
 		register_setting( 'cel_ai_settings_group', 'cel_ai_openrouter_key' );
 		register_setting( 'cel_ai_settings_group', 'cel_ai_model_id' );
 		register_setting( 'cel_ai_settings_group', 'cel_ai_manual_model_id' );
+		register_setting( 'cel_ai_settings_group', 'cel_ai_active_languages' );
 		register_setting( 'cel_ai_settings_group', 'cel_ai_switcher_location' );
 		register_setting( 'cel_ai_settings_group', 'cel_ai_publish_status' );
 
@@ -83,6 +84,14 @@ class CEL_AI_Admin_UI {
 			'cel_ai_manual_model_id',
 			__( 'Manual Model ID (Optional)', 'cel-ai' ),
 			[ $this, 'render_manual_model_id_field' ],
+			'cel-ai-settings',
+			'cel_ai_main_section'
+		);
+
+		add_settings_field(
+			'cel_ai_active_languages',
+			__( 'Active Languages', 'cel-ai' ),
+			[ $this, 'render_active_languages_field' ],
 			'cel-ai-settings',
 			'cel_ai_main_section'
 		);
@@ -130,13 +139,27 @@ class CEL_AI_Admin_UI {
 			echo '<option value="' . esc_attr( $id ) . '" ' . selected( $selected_model, $id, false ) . '>' . esc_html( $name ) . '</option>';
 		}
 		echo '</select>';
-		echo '<p class="description">' . __( 'Choose a model or enter one manually below.', 'cel-ai' ) . '</p>';
 	}
 
 	public function render_manual_model_id_field() {
 		$val = get_option( 'cel_ai_manual_model_id', '' );
 		echo '<input type="text" name="cel_ai_manual_model_id" value="' . esc_attr( $val ) . '" class="regular-text" placeholder="e.g. google/gemini-pro" />';
-		echo '<p class="description">' . __( 'If provided, this ID will take priority over the dropdown selection.', 'cel-ai' ) . '</p>';
+	}
+
+	public function render_active_languages_field() {
+		$all_langs = CEL_AI_I18N_Controller::get_supported_languages();
+		$active_langs = get_option( 'cel_ai_active_languages', array_keys( $all_langs ) );
+		if ( ! is_array( $active_langs ) ) $active_langs = [];
+
+		echo '<div style="max-height: 150px; overflow: auto; border: 1px solid #ddd; padding: 10px; background: #fff; border-radius: 4px;">';
+		foreach ( $all_langs as $code => $lang ) {
+			echo '<label style="display:block; margin-bottom:5px;">';
+			echo '<input type="checkbox" name="cel_ai_active_languages[]" value="' . esc_attr( $code ) . '" ' . checked( in_array( $code, $active_langs ), true, false ) . ' /> ';
+			echo esc_html( $lang['name'] );
+			echo '</label>';
+		}
+		echo '</div>';
+		echo '<p class="description">' . __( 'Only selected languages will appear in the frontend switcher.', 'cel-ai' ) . '</p>';
 	}
 
 	public function render_switcher_location_field() {

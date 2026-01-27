@@ -25,10 +25,19 @@ class CEL_AI_Switcher {
 		}
 
 		$translations = CEL_AI_I18N_Controller::get_translations( $post_id );
-		$supported_langs = CEL_AI_I18N_Controller::get_supported_languages();
+		$all_supported = CEL_AI_I18N_Controller::get_supported_languages();
+		$active_codes = get_option( 'cel_ai_active_languages', array_keys( $all_supported ) );
 		$current_lang = get_post_meta( $post_id, CEL_AI_I18N_Controller::META_LANGUAGE, true );
 
-		if ( empty( $translations ) ) {
+		// Filter supported to only active ones
+		$supported_langs = [];
+		foreach ( $all_supported as $code => $data ) {
+			if ( in_array( $code, $active_codes ) ) {
+				$supported_langs[ $code ] = $data;
+			}
+		}
+
+		if ( empty( $translations ) && count($supported_langs) <= 1 ) {
 			return '';
 		}
 
