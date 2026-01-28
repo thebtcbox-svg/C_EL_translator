@@ -2,7 +2,7 @@
 /**
  * Plugin Name: CEL Multilingual AI
  * Description: AI-powered multilingual functionality for WordPress and WooCommerce using OpenRouter.
- * Version: 1.1.2
+ * Version: 1.1.3
  * Author: CEL Architect
  * Plugin URI: https://github.com/thebtcbox-svg/C_EL_translator
  * Text Domain: cel-ai
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // Define constants
 define( 'CEL_AI_PATH', plugin_dir_path( __FILE__ ) );
 define( 'CEL_AI_URL', plugin_dir_url( __FILE__ ) );
-define( 'CEL_AI_VERSION', '1.1.2' );
+define( 'CEL_AI_VERSION', '1.1.3' );
 
 /**
  * Autoloader or manual inclusion

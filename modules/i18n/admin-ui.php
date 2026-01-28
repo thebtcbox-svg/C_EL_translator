@@ -20,6 +20,7 @@ class CEL_AI_Admin_UI {
 		add_action( 'wp_ajax_cel_ai_get_job_status', [ $this, 'ajax_get_job_status' ] );
 		add_action( 'wp_ajax_cel_ai_cancel_job', [ $this, 'ajax_cancel_job' ] );
 		add_action( 'wp_ajax_cel_ai_retry_job', [ $this, 'ajax_retry_job' ] );
+		add_action( 'wp_ajax_cel_ai_delete_job', [ $this, 'ajax_delete_job' ] );
 		add_action( 'wp_ajax_cel_ai_process_queue_manual', [ $this, 'ajax_process_queue_manual' ] );
 		add_action( 'wp_ajax_cel_ai_check_updates', [ $this, 'ajax_check_updates' ] );
 	}
@@ -384,6 +385,7 @@ class CEL_AI_Admin_UI {
 									<td>
 										<?php if ( $job['status'] === 'failed' ) : ?>
 											<button type="button" class="button button-small cel-ai-retry-btn" data-job-id="<?php echo $job['id']; ?>"><?php _e( 'Retry', 'cel-ai' ); ?></button>
+											<button type="button" class="button button-small cel-ai-delete-btn" data-job-id="<?php echo $job['id']; ?>" style="color:#a00; border-color:#a00; margin-left:5px;"><?php _e( 'Delete', 'cel-ai' ); ?></button>
 										<?php else : ?>
 											<button type="button" class="button-link cel-ai-cancel-btn" data-job-id="<?php echo $job['id']; ?>" style="color:red;"><?php _e( 'Cancel', 'cel-ai' ); ?></button>
 										<?php endif; ?>
@@ -584,6 +586,22 @@ class CEL_AI_Admin_UI {
 				as_enqueue_async_action( 'cel_ai_process_job', [ 'job_id' => $job_id ], 'cel_ai_jobs' );
 			}
 			
+			wp_send_json_success();
+		} else {
+			wp_send_json_error( [ 'message' => 'Job not found' ] );
+		}
+	}
+
+	public function ajax_delete_job() {
+		check_ajax_referer( 'cel_ai_job_status_nonce', 'nonce' );
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			wp_send_json_error( [ 'message' => __( 'Unauthorized', 'cel-ai' ) ] );
+		}
+		$job_id = isset( $_POST['job_id'] ) ? sanitize_text_field( $_POST['job_id'] ) : '';
+		$queue = get_option( CEL_AI_Job_Queue::OPTION_NAME, [] );
+		if ( isset( $queue[ $job_id ] ) ) {
+			unset( $queue[ $job_id ] );
+			update_option( CEL_AI_Job_Queue::OPTION_NAME, $queue, false );
 			wp_send_json_success();
 		} else {
 			wp_send_json_error( [ 'message' => 'Job not found' ] );

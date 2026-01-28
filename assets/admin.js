@@ -135,6 +135,20 @@ jQuery(document).ready(function($) {
         });
     });
 
+    $(document).on('click', '.cel-ai-delete-btn', function() {
+        var btn = $(this);
+        var jobId = btn.data('job-id');
+        if (confirm('Permanently delete this job from queue?')) {
+            $.post(ajaxurl, {
+                action: 'cel_ai_delete_job',
+                job_id: jobId,
+                nonce: celAiAdmin.jobStatusNonce
+            }, function() {
+                window.location.reload();
+            });
+        }
+    });
+
     $('.cel-ai-translate-btn').on('click', function() {
         var btn = $(this);
         var lang = btn.data('lang');
