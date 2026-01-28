@@ -145,7 +145,7 @@ class CEL_AI_Job_Queue {
 		$result = $processor->process_next_step( $queue[ $job_id ], $job_id );
 
 		$queue = get_option( self::OPTION_NAME, [] ); // Refresh
-		if ( ! is_array( $result ) ) return;
+		if ( ! is_array( $result ) || ! isset( $queue[ $job_id ] ) ) return; // Stop if job was deleted in the meantime
 
 		if ( isset( $result['finished'] ) && $result['finished'] ) {
 			$queue[ $job_id ]['status'] = 'completed';

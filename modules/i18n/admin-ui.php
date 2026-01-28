@@ -434,23 +434,32 @@ class CEL_AI_Admin_UI {
 				<div id="cel-ai-bulk-result" style="margin-top: 10px;"></div>
 			<?php elseif ( $active_tab == 'logs' ) : ?>
 				<h2><?php _e( 'Plugin Logs', 'cel-ai' ); ?></h2>
-				<pre style="background: #f4f4f4; padding: 15px; border: 1px solid #ddd; max-height: 400px; overflow: auto;"><?php
+				<pre style="background: #f4f4f4; padding: 15px; border: 1px solid #ddd; max-height: 400px; overflow: auto; white-space: pre-wrap;"><?php
 					$log_file = CEL_AI_PATH . 'logs/plugin.log';
-					if ( file_exists( $log_file ) ) {
+					if ( file_exists( $log_file ) && is_readable( $log_file ) ) {
 						$size = filesize($log_file);
 						$max_read = 50 * 1024; // 50KB
 						if ($size > $max_read) {
-							$fp = fopen($log_file, 'r');
-							fseek($fp, -$max_read, SEEK_END);
-							$data = fread($fp, $max_read);
-							fclose($fp);
-							echo "... [Showing last 50KB of logs] ...\n\n";
-							echo esc_html($data);
+							$fp = @fopen($log_file, 'r');
+							if ($fp) {
+								fseek($fp, -$max_read, SEEK_END);
+								$data = fread($fp, $max_read);
+								fclose($fp);
+								echo "... [Showing last 50KB of logs] ...\n\n";
+								echo esc_html($data);
+							} else {
+								_e( 'Could not open log file.', 'cel-ai' );
+							}
 						} else {
-							echo esc_html( file_get_contents( $log_file ) );
+							$data = @file_get_contents( $log_file );
+							echo $data ? esc_html( $data ) : __( 'Log file is empty.', 'cel-ai' );
 						}
 					} else {
-						_e( 'No logs found.', 'cel-ai' );
+						if ( ! file_exists( $log_file ) ) {
+							_e( 'Log file does not exist yet.', 'cel-ai' );
+						} else {
+							_e( 'Log file is not readable. Check permissions of the /logs directory.', 'cel-ai' );
+						}
 					}
 				?></pre>
 				<button type="button" class="button" onclick="window.location.reload();"><?php _e( 'Refresh Logs', 'cel-ai' ); ?></button>
