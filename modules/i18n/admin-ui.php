@@ -21,6 +21,7 @@ class CEL_AI_Admin_UI {
 		add_action( 'wp_ajax_cel_ai_cancel_job', [ $this, 'ajax_cancel_job' ] );
 		add_action( 'wp_ajax_cel_ai_retry_job', [ $this, 'ajax_retry_job' ] );
 		add_action( 'wp_ajax_cel_ai_delete_job', [ $this, 'ajax_delete_job' ] );
+		add_action( 'wp_ajax_cel_ai_clear_queue', [ $this, 'ajax_clear_queue' ] );
 		add_action( 'wp_ajax_cel_ai_process_queue_manual', [ $this, 'ajax_process_queue_manual' ] );
 		add_action( 'wp_ajax_cel_ai_check_updates', [ $this, 'ajax_check_updates' ] );
 	}
@@ -221,10 +222,6 @@ class CEL_AI_Admin_UI {
 
 	public function render_settings_page() {
 		$active_tab = isset( $_GET['tab'] ) ? $_GET['tab'] : 'general';
-		$queue = get_option( CEL_AI_Job_Queue::OPTION_NAME, [] );
-		$active_jobs = array_filter( $queue, function( $job ) {
-			return in_array( $job['status'], [ 'pending', 'running', 'retry' ] );
-		} );
 		?>
 		<div class="wrap">
 			<h1><?php _e( 'AI Translate Settings', 'cel-ai' ); ?></h1>
@@ -344,14 +341,18 @@ class CEL_AI_Admin_UI {
 			<?php elseif ( $active_tab == 'tools' ) : ?>
 				<div style="display:flex; justify-content:space-between; align-items:center;">
 					<h2><?php _e( 'Current Translation Queue', 'cel-ai' ); ?></h2>
-					<button type="button" id="cel-ai-process-now" class="button button-primary"><?php _e( 'Process Next Step Now', 'cel-ai' ); ?></button>
+					<div>
+						<button type="button" id="cel-ai-process-now" class="button button-primary"><?php _e( 'Process Next Step Now', 'cel-ai' ); ?></button>
+						<button type="button" id="cel-ai-clear-queue" class="button"><?php _e( 'Clear All Jobs', 'cel-ai' ); ?></button>
+					</div>
 				</div>
 				<div id="cel-ai-global-queue">
 					<?php 
 					$all_jobs = get_option( CEL_AI_Job_Queue::OPTION_NAME, [] );
-					$visible_jobs = array_filter( $all_jobs, function( $job ) {
+					$visible_jobs = array_reverse( array_filter( $all_jobs, function( $job ) {
 						return in_array( $job['status'], [ 'pending', 'running', 'retry', 'failed' ] );
-					} );
+					} ) );
+					$visible_jobs = array_slice( $visible_jobs, 0, 50 ); // Limit to 50 most recent visible jobs
 					
 					if ( empty( $visible_jobs ) ) : ?>
 						<p><?php _e( 'No active or failed jobs in the queue.', 'cel-ai' ); ?></p>
@@ -404,13 +405,15 @@ class CEL_AI_Admin_UI {
 						<th><?php _e( 'Select Page/Product', 'cel-ai' ); ?></th>
 						<td>
 							<?php
-							$posts = get_posts( [ 'post_type' => [ 'post', 'page', 'product' ], 'posts_per_page' => -1 ] );
+							// Limit to 200 most recent to prevent UI crash on large sites
+							$posts = get_posts( [ 'post_type' => [ 'post', 'page', 'product' ], 'posts_per_page' => 200 ] );
 							echo '<select id="cel_ai_bulk_post_id" class="regular-text">';
 							foreach ( $posts as $p ) {
 								echo '<option value="' . $p->ID . '">' . esc_html( $p->post_title ) . ' (' . $p->post_type . ')</option>';
 							}
 							echo '</select>';
 							?>
+							<p class="description"><?php _e( 'Showing 200 most recent items. For older items, use the translation button on the post edit page.', 'cel-ai' ); ?></p>
 						</td>
 					</tr>
 					<tr>
@@ -606,6 +609,15 @@ class CEL_AI_Admin_UI {
 		} else {
 			wp_send_json_error( [ 'message' => 'Job not found' ] );
 		}
+	}
+
+	public function ajax_clear_queue() {
+		check_ajax_referer( 'cel_ai_job_status_nonce', 'nonce' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( [ 'message' => __( 'Unauthorized', 'cel-ai' ) ] );
+		}
+		update_option( CEL_AI_Job_Queue::OPTION_NAME, [], false );
+		wp_send_json_success();
 	}
 
 	public function ajax_process_queue_manual() {

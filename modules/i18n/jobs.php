@@ -15,7 +15,8 @@ class CEL_AI_Job_Queue {
 		add_action( 'cel_ai_cron_process_queue', [ $this, 'process_queue' ] );
 		add_action( 'cel_ai_process_job', [ $this, 'process_specific_job' ] );
 		
-		if ( ! wp_next_scheduled( 'cel_ai_cron_process_queue' ) ) {
+		// Only schedule if in admin or doing cron, to avoid unnecessary DB checks on every frontend request
+		if ( ( is_admin() || wp_doing_cron() ) && ! wp_next_scheduled( 'cel_ai_cron_process_queue' ) ) {
 			wp_schedule_event( time(), 'minute', 'cel_ai_cron_process_queue' );
 		}
 	}
@@ -150,6 +151,9 @@ class CEL_AI_Job_Queue {
 			$queue[ $job_id ]['status'] = 'completed';
 			$queue[ $job_id ]['log'][] = 'Successfully finished at ' . current_time( 'mysql' );
 			$queue[ $job_id ]['progress']['percent'] = 100;
+			// Clear heavy data once finished to keep the options table lean
+			unset( $queue[ $job_id ]['steps'] );
+			unset( $queue[ $job_id ]['results'] );
 		} elseif ( isset( $result['success'] ) && $result['success'] ) {
 			$queue[ $job_id ]['status'] = 'running';
 			// Schedule next step with a small delay to avoid overwhelming the server (Error 503 prevention)
@@ -169,6 +173,9 @@ class CEL_AI_Job_Queue {
 				$queue[ $job_id ]['retries']++;
 			} else {
 				$queue[ $job_id ]['status'] = 'failed';
+				// Also clear heavy data on permanent failure
+				unset( $queue[ $job_id ]['steps'] );
+				unset( $queue[ $job_id ]['results'] );
 			}
 		}
 

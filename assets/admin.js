@@ -149,6 +149,26 @@ jQuery(document).ready(function($) {
         }
     });
 
+    $('#cel-ai-clear-queue').on('click', function() {
+        if (confirm('Permanently clear all jobs from queue? This cannot be undone.')) {
+            $.post(ajaxurl, {
+                action: 'cel_ai_clear_queue',
+                nonce: celAiAdmin.jobStatusNonce
+            }, function() {
+                window.location.reload();
+            });
+        }
+    });
+
+    $('#cel-ai-process-now').on('click', function() {
+        var btn = $(this);
+        btn.prop('disabled', true).text('Processing...');
+        triggerQueueProcessing();
+        setTimeout(function() {
+            window.location.reload();
+        }, 2000);
+    });
+
     $('.cel-ai-translate-btn').on('click', function() {
         var btn = $(this);
         var lang = btn.data('lang');
