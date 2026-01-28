@@ -84,12 +84,26 @@ class CEL_AI_AI_Client {
 			return [ 'success' => false, 'message' => __( 'Empty response from AI.', 'cel-ai' ) ];
 		}
 
-		$error_message = isset( $body['error']['message'] ) ? $body['error']['message'] : ( ! empty($body_text) ? $body_text : __( 'Unknown error', 'cel-ai' ) );
+		$error_message = isset( $body['error']['message'] ) ? $body['error']['message'] : '';
+		
+		if ( empty( $error_message ) && ! empty( $body_text ) ) {
+			// Try to extract metadata if it's a JSON string without an explicit error message
+			if ( isset( $body['data']['finish_reason'] ) ) {
+				$error_message = sprintf( 'Request failed during "%s" with status %s.', $body['data']['finish_reason'], $status_code );
+			} else {
+				$error_message = substr( $body_text, 0, 500 ); // Limit message length
+			}
+		}
+
+		if ( empty( $error_message ) ) {
+			$error_message = __( 'Unknown error', 'cel-ai' );
+		}
+
 		CEL_AI_Logger::error( "OpenRouter Error ({$status_code}): {$error_message}" );
 
 		return [
 			'success' => false,
-			'message' => sprintf( __( 'Error: %s', 'cel-ai' ), $error_message ),
+			'message' => sprintf( __( 'Error %s: %s', 'cel-ai' ), $status_code, $error_message ),
 			'status'  => $status_code,
 		];
 	}

@@ -150,6 +150,7 @@ class CEL_AI_Admin_UI {
 		$models = [
 			'mistralai/mistral-7b-instruct' => 'Mistral 7B Instruct (Mistral AI) - FREE',
 			'meta-llama/llama-3-8b-instruct' => 'Llama 3 8B Instruct (Meta) - FREE',
+			'x-ai/grok-2-1212' => 'Grok 2 (xAI) - PAID',
 			'anthropic/claude-3.5-sonnet' => 'Claude 3.5 Sonnet (Anthropic) - PAID',
 			'openai/gpt-4o' => 'GPT-4o (OpenAI) - PAID',
 		];
