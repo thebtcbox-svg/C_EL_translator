@@ -107,12 +107,15 @@ class CEL_AI_Job_Queue {
 		}
 		if ( $changed ) update_option( self::OPTION_NAME, $queue, false );
 
-		// 2. Process up to 3 jobs in parallel if using Action Scheduler, or 1 if using standard cron
+		// 2. Process jobs in parallel up to limit
+		$limits = include CEL_AI_PATH . 'config/limits.php';
+		$max_concurrent = isset($limits['max_concurrent_jobs']) ? $limits['max_concurrent_jobs'] : 1;
+		
 		$jobs_to_process = [];
 		foreach ( $queue as $id => $job ) {
 			if ( in_array( $job['status'], [ 'pending', 'retry', 'running' ] ) ) {
 				$jobs_to_process[] = $id;
-				if ( count( $jobs_to_process ) >= 3 ) break;
+				if ( count( $jobs_to_process ) >= $max_concurrent ) break;
 			}
 		}
 
@@ -149,11 +152,12 @@ class CEL_AI_Job_Queue {
 			$queue[ $job_id ]['progress']['percent'] = 100;
 		} elseif ( isset( $result['success'] ) && $result['success'] ) {
 			$queue[ $job_id ]['status'] = 'running';
-			// Schedule next step
+			// Schedule next step with a small delay to avoid overwhelming the server (Error 503 prevention)
+			$delay = 3; // 3 seconds between steps
 			if ( function_exists( 'as_enqueue_async_action' ) ) {
-				as_enqueue_async_action( 'cel_ai_process_job', [ 'job_id' => $job_id ], 'cel_ai_jobs' );
+				as_enqueue_async_action( 'cel_ai_process_job', [ 'job_id' => $job_id ], 'cel_ai_jobs', false, time() + $delay );
 			} else {
-				wp_schedule_single_event( time(), 'cel_ai_cron_process_queue' );
+				wp_schedule_single_event( time() + $delay, 'cel_ai_cron_process_queue' );
 			}
 		} else {
 			$error_message = isset( $result['message'] ) ? $result['message'] : 'Unknown error';
