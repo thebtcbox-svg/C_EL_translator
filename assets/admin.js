@@ -1,6 +1,12 @@
 jQuery(document).ready(function($) {
+    var pollingIntervals = {};
+    var lastQueueProcess = 0;
+
     function pollJobStatus(jobId, progressBarId, statusId, resultId) {
-        var interval = setInterval(function() {
+        // Don't start duplicate intervals
+        if (pollingIntervals[jobId]) return;
+
+        pollingIntervals[jobId] = setInterval(function() {
             $.post(ajaxurl, {
                 action: 'cel_ai_get_job_status',
                 job_id: jobId,
@@ -13,37 +19,73 @@ jQuery(document).ready(function($) {
                     if (statusId) $('#' + statusId).text(job.status.charAt(0).toUpperCase() + job.status.slice(1) + ' (' + percent + '%)');
                     
                     if (job.status === 'completed' || job.status === 'failed') {
-                        clearInterval(interval);
+                        stopPolling(jobId);
                         if (job.status === 'completed') {
                             if (resultId) $('#' + resultId).html('<span style="color: green;">Translation Complete!</span>');
-                            window.location.reload();
+                            // Delay reload slightly to show completion
+                            setTimeout(function() { window.location.reload(); }, 1000);
                         } else {
                             if (resultId) $('#' + resultId).html('<span style="color: red;">Job Failed. Check logs.</span>');
                         }
-                    } else if (job.status === 'running' || job.status === 'pending' || job.status === 'retry') {
-                        // Ensure the queue is being processed
-                        triggerQueueProcessing();
+                    } else if (['running', 'pending', 'retry'].indexOf(job.status) !== -1) {
+                        // Ensure the queue is being processed, but throttled
+                        triggerQueueProcessingThrottled();
                     }
+                } else {
+                    stopPolling(jobId);
                 }
+            }).fail(function() {
+                stopPolling(jobId);
             });
-        }, 3000);
+        }, 4000); // Slightly longer interval to reduce load
     }
 
-    function triggerQueueProcessing() {
-        $.post(ajaxurl, {
-            action: 'cel_ai_process_queue_manual',
-            nonce: celAiAdmin.jobStatusNonce
+    function stopPolling(jobId) {
+        if (pollingIntervals[jobId]) {
+            clearInterval(pollingIntervals[jobId]);
+            delete pollingIntervals[jobId];
+        }
+    }
+
+    function stopAllPolling() {
+        Object.keys(pollingIntervals).forEach(function(jobId) {
+            stopPolling(jobId);
         });
     }
 
-    // Auto-start polling for all active jobs visible on settings page
-    $('#cel-ai-global-queue tr').each(function() {
-        var row = $(this);
-        var jobId = row.find('.cel-ai-status-text').data('job-id');
-        if (jobId) {
-            pollJobStatus(jobId, 'progress-global-' + jobId + ' .cel-ai-bar', 'progress-global-' + jobId + ' .cel-ai-status-text');
+    function triggerQueueProcessingThrottled() {
+        var now = Date.now();
+        if (now - lastQueueProcess > 15000) { // Only trigger every 15 seconds max
+            lastQueueProcess = now;
+            $.post(ajaxurl, {
+                action: 'cel_ai_process_queue_manual',
+                nonce: celAiAdmin.jobStatusNonce
+            });
         }
-    });
+    }
+
+    // Initialize polling for jobs that are actually active
+    function initActivePolling() {
+        $('#cel-ai-global-queue tr, .cel-ai-progress-container:visible').each(function() {
+            var container = $(this);
+            var statusTextEl = container.find('.cel-ai-status-text');
+            if (statusTextEl.length === 0 && container.hasClass('cel-ai-status-text')) {
+                statusTextEl = container;
+            }
+            
+            var jobId = statusTextEl.data('job-id');
+            var currentStatus = statusTextEl.text().toLowerCase();
+            
+            // Only poll if it looks like an active job
+            if (jobId && (currentStatus.indexOf('pending') !== -1 || currentStatus.indexOf('running') !== -1 || currentStatus.indexOf('retry') !== -1 || currentStatus.indexOf('status:') !== -1)) {
+                var pBarId = container.attr('id') ? container.attr('id') + ' .cel-ai-bar' : 'progress-global-' + jobId + ' .cel-ai-bar';
+                var sId = container.attr('id') ? container.attr('id') + ' .cel-ai-status-text' : 'progress-global-' + jobId + ' .cel-ai-status-text';
+                pollJobStatus(jobId, pBarId, sId);
+            }
+        });
+    }
+
+    initActivePolling();
 
     $('#cel-ai-check-updates').on('click', function() {
         var btn = $(this);
@@ -91,21 +133,12 @@ jQuery(document).ready(function($) {
         }, function(response) {
             btn.prop('disabled', false).text('Start Translation');
             if (response.success) {
-                triggerQueueProcessing();
+                triggerQueueProcessingThrottled();
                 window.location.reload();
             } else {
                 $('#cel-ai-bulk-result').html('<span style="color: red;">' + response.data.message + '</span>');
             }
         });
-    });
-
-    // Sidebar auto-start polling
-    $('.cel-ai-progress-container:visible').each(function() {
-        var container = $(this);
-        var jobId = container.find('.cel-ai-status-text').data('job-id');
-        if (jobId) {
-            pollJobStatus(jobId, container.attr('id') + ' .cel-ai-bar', container.attr('id') + ' .cel-ai-status-text');
-        }
     });
 
     $(document).on('click', '.cel-ai-cancel-btn', function() {
@@ -117,6 +150,7 @@ jQuery(document).ready(function($) {
                 job_id: jobId,
                 nonce: celAiAdmin.jobStatusNonce
             }, function() {
+                stopPolling(jobId);
                 window.location.reload();
             });
         }
@@ -144,6 +178,7 @@ jQuery(document).ready(function($) {
                 job_id: jobId,
                 nonce: celAiAdmin.jobStatusNonce
             }, function() {
+                stopPolling(jobId);
                 window.location.reload();
             });
         }
@@ -151,6 +186,7 @@ jQuery(document).ready(function($) {
 
     $('#cel-ai-clear-queue').on('click', function() {
         if (confirm('Permanently clear all jobs from queue? This cannot be undone.')) {
+            stopAllPolling();
             $.post(ajaxurl, {
                 action: 'cel_ai_clear_queue',
                 nonce: celAiAdmin.jobStatusNonce
@@ -163,7 +199,8 @@ jQuery(document).ready(function($) {
     $('#cel-ai-process-now').on('click', function() {
         var btn = $(this);
         btn.prop('disabled', true).text('Processing...');
-        triggerQueueProcessing();
+        lastQueueProcess = 0; // Force immediate trigger
+        triggerQueueProcessingThrottled();
         setTimeout(function() {
             window.location.reload();
         }, 2000);
@@ -183,7 +220,7 @@ jQuery(document).ready(function($) {
             nonce: celAiAdmin.transNonce
         }, function(response) {
             if (response.success) {
-                triggerQueueProcessing();
+                triggerQueueProcessingThrottled();
                 pollJobStatus(response.data.job_id, 'progress-' + lang + ' .cel-ai-bar', 'progress-' + lang + ' .cel-ai-status-text');
             } else {
                 alert(response.data.message);
