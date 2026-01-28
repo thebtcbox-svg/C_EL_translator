@@ -20,6 +20,17 @@ class CEL_AI_Switcher {
 	 */
 	public function render_switcher() {
 		$post_id = get_the_ID();
+
+		// Fallback for header/widgets where get_the_ID() might fail
+		if ( ! $post_id && is_singular() ) {
+			global $post;
+			$post_id = isset( $post->ID ) ? $post->ID : 0;
+		}
+
+		// Fallback for homepage
+		if ( ! $post_id && is_front_page() ) {
+			$post_id = get_option( 'page_on_front' );
+		}
 		
 		// Ensure styles are enqueued when switcher is rendered via shortcode
 		wp_enqueue_style( 'cel-ai-frontend-style' );
@@ -32,6 +43,12 @@ class CEL_AI_Switcher {
 		$all_supported = CEL_AI_I18N_Controller::get_supported_languages();
 		$active_codes = get_option( 'cel_ai_active_languages', array_keys( $all_supported ) );
 		$current_lang = get_post_meta( $post_id, CEL_AI_I18N_Controller::META_LANGUAGE, true );
+		
+		// Fallback to site language if meta is missing
+		if ( ! $current_lang ) {
+			$current_lang = substr( get_locale(), 0, 2 );
+		}
+
 		$format = get_option( 'cel_ai_switcher_format', 'code' );
 
 		// Filter supported to only active ones
@@ -42,7 +59,13 @@ class CEL_AI_Switcher {
 			}
 		}
 
-		if ( empty( $translations ) && count($supported_langs) <= 1 ) {
+		// Ensure current lang is in supported list even if not explicitly active, 
+		// otherwise the current label will fail
+		if ( ! isset( $supported_langs[ $current_lang ] ) && isset( $all_supported[ $current_lang ] ) ) {
+			$supported_langs[ $current_lang ] = $all_supported[ $current_lang ];
+		}
+
+		if ( empty( $translations ) ) {
 			return '';
 		}
 
@@ -50,7 +73,10 @@ class CEL_AI_Switcher {
 		?>
 		<div class="cel-ai-switcher-wrapper">
 			<div class="cel-ai-current-lang">
-				<?php echo $this->format_label( $current_lang, $supported_langs[ $current_lang ], $format ); ?>
+				<?php 
+				$current_data = isset( $supported_langs[ $current_lang ] ) ? $supported_langs[ $current_lang ] : [ 'name' => $current_lang, 'flag' => '🌐' ];
+				echo $this->format_label( $current_lang, $current_data, $format ); 
+				?>
 			</div>
 			<ul class="cel-ai-lang-list">
 				<?php foreach ( $supported_langs as $code => $lang ) : 

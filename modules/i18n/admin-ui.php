@@ -259,9 +259,13 @@ class CEL_AI_Admin_UI {
 				$active_langs = get_option( 'cel_ai_active_languages', [] );
 				$all_supported = CEL_AI_I18N_Controller::get_supported_languages();
 				
+				$paged = isset( $_GET['paged'] ) ? max( 1, intval( $_GET['paged'] ) ) : 1;
+				$per_page = 20;
+
 				$args = [
 					'post_type'      => [ 'post', 'page', 'product' ],
-					'posts_per_page' => -1,
+					'posts_per_page' => $per_page,
+					'paged'          => $paged,
 					'meta_query'     => [
 						'relation' => 'OR',
 						[ 'key' => CEL_AI_I18N_Controller::META_IS_ORIGINAL, 'value' => '1', 'compare' => '=' ],
@@ -320,6 +324,21 @@ class CEL_AI_Admin_UI {
 						<?php endif; ?>
 					</tbody>
 				</table>
+
+				<div class="tablenav bottom">
+					<div class="tablenav-pages">
+						<?php
+						echo paginate_links( [
+							'base'      => add_query_arg( 'paged', '%#%' ),
+							'format'    => '',
+							'prev_text' => __( '&laquo;' ),
+							'next_text' => __( '&raquo;' ),
+							'total'     => $originals->max_num_pages,
+							'current'   => $paged,
+						] );
+						?>
+					</div>
+				</div>
 
 			<?php elseif ( $active_tab == 'tools' ) : ?>
 				<div style="display:flex; justify-content:space-between; align-items:center;">
@@ -413,7 +432,18 @@ class CEL_AI_Admin_UI {
 				<pre style="background: #f4f4f4; padding: 15px; border: 1px solid #ddd; max-height: 400px; overflow: auto;"><?php
 					$log_file = CEL_AI_PATH . 'logs/plugin.log';
 					if ( file_exists( $log_file ) ) {
-						echo esc_html( file_get_contents( $log_file ) );
+						$size = filesize($log_file);
+						$max_read = 50 * 1024; // 50KB
+						if ($size > $max_read) {
+							$fp = fopen($log_file, 'r');
+							fseek($fp, -$max_read, SEEK_END);
+							$data = fread($fp, $max_read);
+							fclose($fp);
+							echo "... [Showing last 50KB of logs] ...\n\n";
+							echo esc_html($data);
+						} else {
+							echo esc_html( file_get_contents( $log_file ) );
+						}
 					} else {
 						_e( 'No logs found.', 'cel-ai' );
 					}

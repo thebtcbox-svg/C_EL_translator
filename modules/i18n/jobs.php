@@ -77,6 +77,22 @@ class CEL_AI_Job_Queue {
 		$queue = get_option( self::OPTION_NAME, [] );
 		if ( empty( $queue ) ) return;
 
+		// 0. Prune old completed/failed jobs (older than 3 days)
+		$changed_prune = false;
+		$three_days_ago = time() - ( 3 * DAY_IN_SECONDS );
+		foreach ( $queue as $id => $job ) {
+			if ( in_array( $job['status'], [ 'completed', 'failed' ] ) ) {
+				$updated_at = isset( $job['updated_at'] ) ? strtotime( $job['updated_at'] ) : 0;
+				if ( $updated_at < $three_days_ago ) {
+					unset( $queue[ $id ] );
+					$changed_prune = true;
+				}
+			}
+		}
+		if ( $changed_prune ) {
+			update_option( self::OPTION_NAME, $queue, false );
+		}
+
 		// 1. Stuck Job Recovery: Reset jobs that haven't moved for 5 minutes
 		$changed = false;
 		foreach ( $queue as $id => $job ) {
