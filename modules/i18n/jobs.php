@@ -13,6 +13,7 @@ class CEL_AI_Job_Queue {
 
 	public function __construct() {
 		add_action( 'cel_ai_cron_process_queue', [ $this, 'process_queue' ] );
+		add_action( 'cel_ai_process_job', [ $this, 'process_specific_job' ] );
 		
 		if ( ! wp_next_scheduled( 'cel_ai_cron_process_queue' ) ) {
 			wp_schedule_event( time(), 'minute', 'cel_ai_cron_process_queue' );
@@ -47,11 +48,30 @@ class CEL_AI_Job_Queue {
 		update_option( self::OPTION_NAME, $queue, false );
 		CEL_AI_Logger::info( "Enqueued iterative translation job {$job_id} with " . count($steps) . " steps." );
 
+		// Use Action Scheduler for faster processing if available
+		if ( function_exists( 'as_enqueue_async_action' ) ) {
+			as_enqueue_async_action( 'cel_ai_process_job', [ 'job_id' => $job_id ], 'cel_ai_jobs' );
+		}
+
 		return $job_id;
 	}
 
 	/**
-	 * Process one step from the queue
+	 * Process a specific job (called by Action Scheduler)
+	 */
+	public function process_specific_job( $job_id ) {
+		$queue = get_option( self::OPTION_NAME, [] );
+		if ( ! isset( $queue[$job_id] ) ) return;
+
+		$status = $queue[$job_id]['status'];
+		if ( ! in_array( $status, [ 'pending', 'running', 'retry' ] ) ) return;
+
+		$this->process_single_job_step( $job_id );
+	}
+
+	/**
+	 * Process queue (called by WP Cron)
+	 * Handles recovery and triggers processing of multiple jobs if possible
 	 */
 	public function process_queue() {
 		$queue = get_option( self::OPTION_NAME, [] );
@@ -61,52 +81,65 @@ class CEL_AI_Job_Queue {
 		$changed = false;
 		foreach ( $queue as $id => $job ) {
 			if ( $job['status'] === 'running' ) {
-				$last_update = isset($job['updated_at']) ? strtotime($job['updated_at']) : 0;
-				if ( (time() - $last_update) > 300 ) { // 5 minutes
+				$last_update = isset( $job['updated_at'] ) ? strtotime( $job['updated_at'] ) : 0;
+				if ( ( time() - $last_update ) > 300 ) { // 5 minutes
 					$queue[$id]['status'] = 'retry';
 					$queue[$id]['log'][] = 'Recovered from stuck state.';
 					$changed = true;
 				}
 			}
 		}
-		if ($changed) update_option( self::OPTION_NAME, $queue, false );
+		if ( $changed ) update_option( self::OPTION_NAME, $queue, false );
 
-		// 2. Find next job to process
-		$job_id = null;
+		// 2. Process up to 3 jobs in parallel if using Action Scheduler, or 1 if using standard cron
+		$jobs_to_process = [];
 		foreach ( $queue as $id => $job ) {
-			if ( 'pending' === $job['status'] || 'running' === $job['status'] || 'retry' === $job['status'] ) {
-				$job_id = $id;
-				break;
+			if ( in_array( $job['status'], [ 'pending', 'retry', 'running' ] ) ) {
+				$jobs_to_process[] = $id;
+				if ( count( $jobs_to_process ) >= 3 ) break;
 			}
 		}
-		if ( ! $job_id ) return;
 
-		// 3. Update status to Running
+		foreach ( $jobs_to_process as $job_id ) {
+			if ( function_exists( 'as_enqueue_async_action' ) ) {
+				as_enqueue_async_action( 'cel_ai_process_job', [ 'job_id' => $job_id ], 'cel_ai_jobs' );
+			} else {
+				$this->process_single_job_step( $job_id );
+				break; // Only one per tick for standard cron to avoid timeouts
+			}
+		}
+	}
+
+	/**
+	 * Process a single step for a specific job
+	 */
+	private function process_single_job_step( $job_id ) {
+		$queue = get_option( self::OPTION_NAME, [] );
+		if ( ! isset( $queue[ $job_id ] ) ) return;
+
 		$queue[ $job_id ]['status'] = 'running';
 		$queue[ $job_id ]['updated_at'] = current_time( 'mysql' );
 		update_option( self::OPTION_NAME, $queue, false );
 
-		// 4. Process EXACTLY ONE step
 		$processor = new CEL_AI_Translation_Processor();
 		$result = $processor->process_next_step( $queue[ $job_id ], $job_id );
 
-		// 5. Finalize or schedule next
 		$queue = get_option( self::OPTION_NAME, [] ); // Refresh
-		if ( ! is_array($result) ) return;
+		if ( ! is_array( $result ) ) return;
 
-		if ( isset($result['finished']) && $result['finished'] ) {
+		if ( isset( $result['finished'] ) && $result['finished'] ) {
 			$queue[ $job_id ]['status'] = 'completed';
 			$queue[ $job_id ]['log'][] = 'Successfully finished at ' . current_time( 'mysql' );
 			$queue[ $job_id ]['progress']['percent'] = 100;
-			$queue[ $job_id ]['updated_at'] = current_time( 'mysql' );
-			update_option( self::OPTION_NAME, $queue, false );
-		} elseif ( isset($result['success']) && $result['success'] ) {
-			// Step succeeded, schedule immediate retry for next step
-			$queue[ $job_id ]['updated_at'] = current_time( 'mysql' );
-			update_option( self::OPTION_NAME, $queue, false );
-			wp_schedule_single_event( time(), 'cel_ai_cron_process_queue' );
+		} elseif ( isset( $result['success'] ) && $result['success'] ) {
+			$queue[ $job_id ]['status'] = 'running';
+			// Schedule next step
+			if ( function_exists( 'as_enqueue_async_action' ) ) {
+				as_enqueue_async_action( 'cel_ai_process_job', [ 'job_id' => $job_id ], 'cel_ai_jobs' );
+			} else {
+				wp_schedule_single_event( time(), 'cel_ai_cron_process_queue' );
+			}
 		} else {
-			// Step failed
 			$error_message = isset( $result['message'] ) ? $result['message'] : 'Unknown error';
 			$queue[ $job_id ]['log'][] = 'STEP ERROR: ' . $error_message;
 			$status_code = isset( $result['status'] ) ? $result['status'] : 0;
@@ -117,9 +150,10 @@ class CEL_AI_Job_Queue {
 			} else {
 				$queue[ $job_id ]['status'] = 'failed';
 			}
-			$queue[ $job_id ]['updated_at'] = current_time( 'mysql' );
-			update_option( self::OPTION_NAME, $queue, false );
 		}
+
+		$queue[ $job_id ]['updated_at'] = current_time( 'mysql' );
+		update_option( self::OPTION_NAME, $queue, false );
 	}
 
 	public static function get_job( $job_id ) {
@@ -238,26 +272,47 @@ class CEL_AI_Translation_Processor {
 	private function get_content_chunks( $content ) {
 		$limits = include CEL_AI_PATH . 'config/limits.php';
 		$max_len = $limits['max_chars_per_request'];
-		if ( mb_strlen( $content ) <= $max_len ) return [ $content ];
+		if ( mb_strlen( $content ) <= $max_len ) {
+			return [ $content ];
+		}
+
+		// Improved chunking: try to split by block-level HTML tags first to preserve structure
+		$content = str_replace( [ '</h1>', '</h2>', '</h3>', '</h4>', '</h5>', '</h6>', '</p>', '</div>', '</li>' ], 
+								[ "</h1>\n\n", "</h2>\n\n", "</h3>\n\n", "</h4>\n\n", "</h5>\n\n", "</h6>\n\n", "</p>\n\n", "</div>\n\n", "</li>\n\n" ], 
+								$content );
 
 		$paragraphs = explode( "\n\n", $content );
 		$chunks = [];
 		$current = "";
+
 		foreach ( $paragraphs as $p ) {
+			$p = trim($p);
+			if ( empty($p) ) continue;
+
 			if ( mb_strlen( $current . $p ) > $max_len ) {
-				if ( ! empty($current) ) $chunks[] = trim($current);
-				if ( mb_strlen($p) > $max_len ) {
-					$sub = $this->mb_str_split($p, $max_len);
-					foreach ($sub as $s) $chunks[] = $s;
+				if ( ! empty( $current ) ) {
+					$chunks[] = trim( $current );
+				}
+				
+				if ( mb_strlen( $p ) > $max_len ) {
+					// Hard split if a single paragraph is too long
+					$sub = $this->mb_str_split( $p, $max_len );
+					foreach ( $sub as $s ) {
+						$chunks[] = $s;
+					}
 					$current = "";
 				} else {
 					$current = $p;
 				}
 			} else {
-				$current .= (empty($current) ? "" : "\n\n") . $p;
+				$current .= ( empty( $current ) ? "" : "\n\n" ) . $p;
 			}
 		}
-		if (!empty($current)) $chunks[] = trim($current);
+
+		if ( ! empty( $current ) ) {
+			$chunks[] = trim( $current );
+		}
+
 		return $chunks;
 	}
 

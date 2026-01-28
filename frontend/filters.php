@@ -16,11 +16,13 @@ class CEL_AI_Frontend_Filters {
 		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_frontend_assets' ] );
 		add_action( 'wp_body_open', [ $this, 'inject_header_switcher' ] );
 		add_filter( 'body_class', [ $this, 'add_body_classes' ] );
+		add_action( 'pre_get_posts', [ $this, 'filter_by_language' ] );
 	}
 
 	public function enqueue_frontend_assets() {
+		wp_register_style( 'cel-ai-frontend-style', CEL_AI_URL . 'assets/frontend.css', [], CEL_AI_VERSION );
 		if ( get_option( 'cel_ai_switcher_location', 'none' ) !== 'none' ) {
-			wp_enqueue_style( 'cel-ai-frontend-style', CEL_AI_URL . 'assets/frontend.css', [], CEL_AI_VERSION );
+			wp_enqueue_style( 'cel-ai-frontend-style' );
 		}
 	}
 
@@ -78,6 +80,53 @@ class CEL_AI_Frontend_Filters {
 	public function add_query_vars( $vars ) {
 		$vars[] = 'lang';
 		return $vars;
+	}
+
+	/**
+	 * Filter main query by language to avoid duplicates
+	 *
+	 * @param WP_Query $query
+	 */
+	public function filter_by_language( $query ) {
+		if ( is_admin() || ! $query->is_main_query() ) {
+			return;
+		}
+
+		// Only filter archive pages where duplicates usually appear
+		if ( ! $query->is_archive() && ! $query->is_home() && ! $query->is_search() ) {
+			return;
+		}
+
+		$lang = get_query_var( 'lang' ) ?: substr( get_locale(), 0, 2 );
+
+		$meta_query = $query->get( 'meta_query' ) ?: [];
+
+		// If we are looking for the default site language, 
+		// we should also include posts that don't have the meta yet.
+		$site_lang = substr( get_locale(), 0, 2 );
+
+		if ( $lang === $site_lang ) {
+			$meta_query[] = [
+				'relation' => 'OR',
+				[
+					'key'     => CEL_AI_I18N_Controller::META_LANGUAGE,
+					'value'   => $lang,
+					'compare' => '=',
+				],
+				[
+					'key'     => CEL_AI_I18N_Controller::META_LANGUAGE,
+					'compare' => 'NOT EXISTS',
+				],
+			];
+		} else {
+			$meta_query[] = [
+				'key'     => CEL_AI_I18N_Controller::META_LANGUAGE,
+				'value'   => $lang,
+				'compare' => '=',
+			];
+		}
+
+		$query->set( 'meta_query', $meta_query );
 	}
 
 	/**

@@ -122,6 +122,19 @@ jQuery(document).ready(function($) {
         }
     });
 
+    $(document).on('click', '.cel-ai-retry-btn', function() {
+        var btn = $(this);
+        var jobId = btn.data('job-id');
+        btn.prop('disabled', true).text('Retrying...');
+        $.post(ajaxurl, {
+            action: 'cel_ai_retry_job',
+            job_id: jobId,
+            nonce: celAiAdmin.jobStatusNonce
+        }, function() {
+            window.location.reload();
+        });
+    });
+
     $('.cel-ai-translate-btn').on('click', function() {
         var btn = $(this);
         var lang = btn.data('lang');

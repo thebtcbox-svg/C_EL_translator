@@ -17,6 +17,10 @@ class CEL_AI_SEO_Controller {
 	 * Add hreflang tags to the head
 	 */
 	public function add_hreflang_tags() {
+		if ( ! is_singular() ) {
+			return;
+		}
+
 		$post_id = get_the_ID();
 		if ( ! $post_id ) {
 			return;

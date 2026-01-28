@@ -20,6 +20,10 @@ class CEL_AI_Switcher {
 	 */
 	public function render_switcher() {
 		$post_id = get_the_ID();
+		
+		// Ensure styles are enqueued when switcher is rendered via shortcode
+		wp_enqueue_style( 'cel-ai-frontend-style' );
+
 		if ( ! $post_id ) {
 			return '';
 		}

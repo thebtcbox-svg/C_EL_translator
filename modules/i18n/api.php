@@ -25,6 +25,12 @@ class CEL_AI_API {
 			'callback'            => [ $this, 'handle_job_status_request' ],
 			'permission_callback' => [ $this, 'check_permission' ],
 		] );
+
+		register_rest_route( 'cel-ai/v1', '/link', [
+			'methods'             => 'POST',
+			'callback'            => [ $this, 'handle_link_request' ],
+			'permission_callback' => [ $this, 'check_permission' ],
+		] );
 	}
 
 	/**
@@ -78,7 +84,38 @@ class CEL_AI_API {
 		return rest_ensure_response( [
 			'status'   => $job['status'],
 			'log'      => $job['log'],
-			'progress' => isset($job['progress']) ? $job['progress'] : null,
+			'progress' => isset( $job['progress'] ) ? $job['progress'] : null,
+		] );
+	}
+
+	/**
+	 * Handle request to manually link an existing translation
+	 */
+	public function handle_link_request( $request ) {
+		$params = $request->get_json_params();
+		if ( ! is_array( $params ) ) {
+			return new WP_Error( 'invalid_json', 'Invalid JSON payload', [ 'status' => 400 ] );
+		}
+
+		$post_id        = isset( $params['post_id'] ) ? intval( $params['post_id'] ) : 0;
+		$translation_id = isset( $params['translation_id'] ) ? intval( $params['translation_id'] ) : 0;
+		$language       = isset( $params['language'] ) ? sanitize_text_field( $params['language'] ) : '';
+
+		if ( ! $post_id || ! $translation_id || ! $language ) {
+			return new WP_Error( 'missing_params', 'Missing post_id, translation_id or language', [ 'status' => 400 ] );
+		}
+
+		$group_id = CEL_AI_I18N_Controller::ensure_group_id( $post_id );
+
+		update_post_meta( $translation_id, CEL_AI_I18N_Controller::META_GROUP_ID, $group_id );
+		update_post_meta( $translation_id, CEL_AI_I18N_Controller::META_LANGUAGE, $language );
+		update_post_meta( $translation_id, CEL_AI_I18N_Controller::META_ORIGINAL_ID, $post_id );
+		update_post_meta( $translation_id, CEL_AI_I18N_Controller::META_IS_ORIGINAL, '0' );
+		update_post_meta( $translation_id, CEL_AI_I18N_Controller::META_STATUS, get_post_status( $translation_id ) );
+
+		return rest_ensure_response( [
+			'success'  => true,
+			'group_id' => $group_id,
 		] );
 	}
 }
